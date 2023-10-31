@@ -1,4 +1,6 @@
-echo("IGB-large (Homogeneous) download starting");
+mkdir -p igb_large
+cd igb_large
+
 # paper
 wget https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper/node_feat.npy
 wget https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper/node_label_19.npy
@@ -7,4 +9,6 @@ wget https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper/pap
 
 # paper__cites__paper
 wget --recursive --no-parent https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper__cites__paper/edge_index.npy
-echo("IGB-large (Homogeneous) download complete");
+
+# Leaving igb_large
+cd ..

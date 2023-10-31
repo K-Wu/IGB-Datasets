@@ -1,11 +1,20 @@
-echo("IGB-full (Homogeneous) download starting");
+mkdir -p igb260m
+cd igb260m
+
 # paper
+mkdir -p paper
+cd paper
 wget --recursive --no-parent https://igb-public.s3.us-east-2.amazonaws.com/IGBH/processed/paper/node_feat.npy
 wget --recursive --no-parent https://igb-public.s3.us-east-2.amazonaws.com/IGBH/processed/paper/node_label_19.npy
 wget --recursive --no-parent https://igb-public.s3.us-east-2.amazonaws.com/IGBH/processed/paper/node_label_2K.npy
 wget --recursive --no-parent https://igb-public.s3.us-east-2.amazonaws.com/IGBH/processed/paper/paper_id_index_mapping.npy
+cd ..
 
 # paper__cites__paper
+mkdir -p paper__cites__paper
+cd paper__cites__paper
 wget --recursive --no-parent https://igb-public.s3.us-east-2.amazonaws.com/IGBH/processed/paper__cites__paper/edge_index.npy
-echo("IGB-full (Homogeneous) download complete");
+cd ..
 
+# Leaving igb260m
+cd ..
