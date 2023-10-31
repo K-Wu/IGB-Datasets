@@ -11,7 +11,7 @@ wget -O paper/paper_id_index_mapping.npy https://igb-public.s3.us-east-2.amazona
 # paper__cites__paper
 mkdir -p paper__cites__paper
 cd paper__cites__paper
-wget --recursive --no-parent https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper__cites__paper/edge_index.npy
+wget https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper__cites__paper/edge_index.npy
 cd ..
 
 # paper__cites__paper
