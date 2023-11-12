@@ -1,5 +1,5 @@
-mkdir -p igbh600m
-cd igbh600m
+mkdir -p full/processed
+cd full/processed
 
 # paper
 mkdir -p paper
@@ -81,5 +81,5 @@ cd paper__written_by__author
 wget https://igb-public.s3.us-east-2.amazonaws.com/IGBH/processed/paper__written_by__author/edge_index.npy
 cd ..
 
-# Leaving igbh600m
-cd ..
+# Leaving full/processed
+cd ../..

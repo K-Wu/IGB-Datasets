@@ -158,7 +158,6 @@ class IGBHeteroDGLDataset(DGLDataset):
         super().__init__(name='IGB260M')
 
     def process(self):
-
         if self.args.in_memory:
             paper_paper_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed',
             'paper__cites__paper', 'edge_index.npy')))
@@ -303,8 +302,12 @@ class IGBHeteroDGLDatasetMassive(DGLDataset):
 
         if self.args.dataset_size == "full":
             num_paper_nodes = 269346174
-            paper_node_features = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
-            'paper', 'node_feat.npy'), dtype='float32', mode='r',  shape=(num_paper_nodes,1024)))
+            if self.args.dummy_feats:
+                # Create features with hidden dimension as 1 to reduce memory cost during partitioning and load partition
+                paper_node_features = torch.ones(num_paper_nodes, 1)
+            else:
+                paper_node_features = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
+                'paper', 'node_feat.npy'), dtype='float32', mode='r',  shape=(num_paper_nodes,1024)))
             if self.args.num_classes == 19:
                 paper_node_labels = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
                 'paper', 'node_label_19.npy'), dtype='float32', mode='r',  shape=(num_paper_nodes))).to(torch.long)
@@ -312,14 +315,20 @@ class IGBHeteroDGLDatasetMassive(DGLDataset):
                 paper_node_labels = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
                 'paper', 'node_label_2K.npy'), dtype='float32', mode='r',  shape=(num_paper_nodes))).to(torch.long)
             num_author_nodes = 277220883
-            author_node_features = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
-            'author', 'node_feat.npy'), dtype='float32', mode='r',  shape=(num_author_nodes,1024)))
+            if self.args.dummy_feats:
+                # Create features with hidden dimension as 1 to reduce memory cost during partitioning and load partition
+                author_node_features = torch.ones(num_author_nodes, 1)
+            else:
+                author_node_features = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
+                'author', 'node_feat.npy'), dtype='float32', mode='r',  shape=(num_author_nodes,1024)))
 
-          
         elif self.args.dataset_size == "large":
             num_paper_nodes = 100000000
-            paper_node_features = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
-            'paper', 'node_feat.npy'), dtype='float32', mode='r',  shape=(num_paper_nodes,1024)))
+            if self.args.dummy_feats:
+                raise NotImplementedError("dummy_feats not implemented for large igbh")
+            else:
+                paper_node_features = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
+                'paper', 'node_feat.npy'), dtype='float32', mode='r',  shape=(num_paper_nodes,1024)))
             if self.args.num_classes == 19:
                 paper_node_labels = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
                 'paper', 'node_label_19.npy'), dtype='float32', mode='r',  shape=(num_paper_nodes))).to(torch.long)
@@ -327,13 +336,26 @@ class IGBHeteroDGLDatasetMassive(DGLDataset):
                 paper_node_labels = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
                 'paper', 'node_label_2K.npy'), dtype='float32', mode='r',  shape=(num_paper_nodes))).to(torch.long)
             num_author_nodes = 116959896
-            author_node_features = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
-            'author', 'node_feat.npy'), dtype='float32', mode='r',  shape=(num_author_nodes,1024)))
+            if self.args.dummy_feats:
+                raise NotImplementedError("dummy_feats not implemented for large igbh")
+            else:        
+                author_node_features = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
+                'author', 'node_feat.npy'), dtype='float32', mode='r',  shape=(num_author_nodes,1024)))
 
-        institute_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-        'institute', 'node_feat.npy'), mmap_mode='r'))
-        fos_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-        'fos', 'node_feat.npy'), mmap_mode='r'))
+        if self.args.dummy_feats:
+            # Create features with hidden dimension as 1 to reduce memory cost during partitioning and load partition
+            if self.args.dataset_size == "full":
+                num_fos = 712960
+                num_institutes_full = 26918
+            else:
+                raise NotImplementedError
+            institute_node_features = torch.ones(num_institutes_full, 1)
+            fos_node_features = torch.ones(num_fos, 1)
+        else:
+            institute_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
+            'institute', 'node_feat.npy'), mmap_mode='r'))
+            fos_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
+            'fos', 'node_feat.npy'), mmap_mode='r'))
         num_nodes_dict = {'paper': num_paper_nodes, 'author': num_author_nodes, 'institute': len(institute_node_features), 'fos': len(fos_node_features)}
         graph_data = {
             ('paper', 'cites', 'paper'): (paper_paper_edges[:, 0], paper_paper_edges[:, 1]),
