@@ -105,11 +105,11 @@ def construct_homogeneous(
     # if comb_ef is not None:
     #     retg.edata.update(comb_ef)
 
-    retg.ndata[NID] = F.cat(nids, 0)
-    retg.edata[EID] = F.cat(eids, 0)
+    retg.ndata[NID] = cat_mmap_arrays(nids)
+    retg.edata[EID] = cat_mmap_arrays(eids)
     if store_type:
-        retg.ndata[NTYPE] = F.cat(ntype_ids, 0)
-        retg.edata[ETYPE] = F.cat(etype_ids, 0)
+        retg.ndata[NTYPE] = cat_mmap_arrays(ntype_ids)
+        retg.edata[ETYPE] = cat_mmap_arrays(etype_ids)
 
     if return_count:
         return retg, ntype_count, etype_count
