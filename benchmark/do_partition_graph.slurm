@@ -1,8 +1,10 @@
 #!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --time=167:59:00
-#SBATCH -p sandybridge
+#SBATCH -p rome
+#SBATCH --exclusive
 #SBATCH --ntasks=1
+#SBATCH --mem=0
 #SBATCH --job-name=partition_graph
 #SBATCH --output=my_output.%j.out
 #SBATCH --error=my_output.%j.err
@@ -17,4 +19,4 @@ which conda
 which python
 
 # Run your Python script
-python -m benchmark.partition_graph
+python -m benchmark.do_partition_graph

@@ -345,56 +345,79 @@ class IGBHeteroDGLDatasetMassive(DGLDataset):
         if self.args.dummy_feats:
             # Create features with hidden dimension as 1 to reduce memory cost during partitioning and load partition
             if self.args.dataset_size == "full":
-                num_fos = 712960
-                num_institutes_full = 26918
+                num_fos_nodes = 712960
+                num_institute_nodes = 26918
             else:
                 raise NotImplementedError
-            institute_node_features = torch.ones(num_institutes_full, 1)
-            fos_node_features = torch.ones(num_fos, 1)
+            institute_node_features = torch.ones(num_institute_nodes, 1)
+            fos_node_features = torch.ones(num_fos_nodes, 1)
         else:
             institute_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
             'institute', 'node_feat.npy'), mmap_mode='r'))
             fos_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
             'fos', 'node_feat.npy'), mmap_mode='r'))
         num_nodes_dict = {'paper': num_paper_nodes, 'author': num_author_nodes, 'institute': len(institute_node_features), 'fos': len(fos_node_features)}
-        graph_data = {
-            ('paper', 'cites', 'paper'): (paper_paper_edges[:, 0], paper_paper_edges[:, 1]),
-            ('paper', 'written_by', 'author'): (author_paper_edges[:, 0], author_paper_edges[:, 1]),
-            ('author', 'affiliated_to', 'institute'): (affiliation_author_edges[:, 0], affiliation_author_edges[:, 1]),
-            ('paper', 'topic', 'fos'): (paper_fos_edges[:, 0], paper_fos_edges[:, 1])
-        }
-        self.graph = dgl.heterograph(graph_data, num_nodes_dict)  
-        self.graph.predict = 'paper'
-        self.graph = dgl.remove_self_loop(self.graph, etype='cites')
-        self.graph = dgl.add_self_loop(self.graph, etype='cites')
-        self.graph.nodes['paper'].data['feat'] = paper_node_features
-        self.graph.num_paper_nodes = paper_node_features.shape[0]
-        self.graph.nodes['paper'].data['label'] = paper_node_labels
-        self.graph.nodes['author'].data['feat'] = author_node_features
-        self.graph.num_author_nodes = author_node_features.shape[0]
 
-        self.graph.nodes['institute'].data['feat'] = institute_node_features
-        self.graph.num_institute_nodes = institute_node_features.shape[0]
 
-        self.graph.nodes['fos'].data['feat'] = fos_node_features
-        self.graph.num_fos_nodes = fos_node_features.shape[0]
+        if self.args.load_homo_graph:
+            from .utils import construct_homogeneous
+            # Sorted the key according to dictionary order, i.e., the order in graph.canonical_etypes
+            graph_data = {
+                ('author', 'affiliated_to', 'institute'): (affiliation_author_edges[:, 0], affiliation_author_edges[:, 1]),
+                ('paper', 'cites', 'paper'): (paper_paper_edges[:, 0], paper_paper_edges[:, 1]),
+                ('paper', 'topic', 'fos'): (paper_fos_edges[:, 0], paper_fos_edges[:, 1]),
+                ('paper', 'written_by', 'author'): (author_paper_edges[:, 0], author_paper_edges[:, 1]),
+            }
+            self.graph = construct_homogeneous(graph_data,[('author', 'affiliated_to', 'institute'), ('paper', 'cites', 'paper'),('paper', 'topic', 'fos'),('paper', 'written_by', 'author')],['author', 'fos', 'institute', 'paper'],{
+                'author':num_author_nodes,
+                'fos':num_fos_nodes,
+                'institute':num_institute_nodes,
+                'paper':num_paper_nodes
+            })
         
-        n_nodes = paper_node_features.shape[0]
+        
+        else:
+            # Sorted the key according to dictionary order, i.e., the order in graph.canonical_etypes
+            graph_data = {
+                ('author', 'affiliated_to', 'institute'): (affiliation_author_edges[:, 0], affiliation_author_edges[:, 1]),
+                ('paper', 'cites', 'paper'): (paper_paper_edges[:, 0], paper_paper_edges[:, 1]),
+                ('paper', 'topic', 'fos'): (paper_fos_edges[:, 0], paper_fos_edges[:, 1]),
+                ('paper', 'written_by', 'author'): (author_paper_edges[:, 0], author_paper_edges[:, 1]),
+            }
+            self.graph = dgl.heterograph(graph_data, num_nodes_dict)  
+            # self.graph.canonical_etypes == [('author', 'affiliated_to', 'institute'), ('paper', 'cites', 'paper'), ('paper', 'topic', 'fos'), ('paper', 'written_by', 'author')]
+            # self.graph.ntypes == ['author', 'fos', 'institute', 'paper']
+            self.graph.predict = 'paper'
+            self.graph = dgl.remove_self_loop(self.graph, etype='cites')
+            self.graph = dgl.add_self_loop(self.graph, etype='cites')
+            self.graph.nodes['paper'].data['feat'] = paper_node_features
+            self.graph.num_paper_nodes = paper_node_features.shape[0]
+            self.graph.nodes['paper'].data['label'] = paper_node_labels
+            self.graph.nodes['author'].data['feat'] = author_node_features
+            self.graph.num_author_nodes = author_node_features.shape[0]
 
-        n_train = int(n_nodes * 0.6)
-        n_val = int(n_nodes * 0.2)
-        
-        train_mask = torch.zeros(n_nodes, dtype=torch.bool)
-        val_mask = torch.zeros(n_nodes, dtype=torch.bool)
-        test_mask = torch.zeros(n_nodes, dtype=torch.bool)
-        
-        train_mask[:n_train] = True
-        val_mask[n_train:n_train + n_val] = True
-        test_mask[n_train + n_val:] = True
-        
-        self.graph.nodes['paper'].data['train_mask'] = train_mask
-        self.graph.nodes['paper'].data['val_mask'] = val_mask
-        self.graph.nodes['paper'].data['test_mask'] = test_mask
+            self.graph.nodes['institute'].data['feat'] = institute_node_features
+            self.graph.num_institute_nodes = institute_node_features.shape[0]
+
+            self.graph.nodes['fos'].data['feat'] = fos_node_features
+            self.graph.num_fos_nodes = fos_node_features.shape[0]
+            
+            n_nodes = paper_node_features.shape[0]
+
+            n_train = int(n_nodes * 0.6)
+            n_val = int(n_nodes * 0.2)
+            
+            train_mask = torch.zeros(n_nodes, dtype=torch.bool)
+            val_mask = torch.zeros(n_nodes, dtype=torch.bool)
+            test_mask = torch.zeros(n_nodes, dtype=torch.bool)
+            
+            train_mask[:n_train] = True
+            val_mask[n_train:n_train + n_val] = True
+            test_mask[n_train + n_val:] = True
+            
+            self.graph.nodes['paper'].data['train_mask'] = train_mask
+            self.graph.nodes['paper'].data['val_mask'] = val_mask
+            self.graph.nodes['paper'].data['test_mask'] = test_mask
         
     def __getitem__(self, i):
         return self.graph

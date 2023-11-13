@@ -21,15 +21,19 @@ def get_igbh_config() ->argparse.ArgumentParser:
         help='size of the datasets')
     parser.add_argument('--num_classes', type=int, default=19, 
         choices=[19, 2983], help='number of classes')
+    parser.add_argument('--load_homo_graph', type = int, default = 1,
+        choices=[0,1], help="0:load heterogeneous graph (which the original IGB dataloader provides), 1:load homogeneous graph")
     parser.add_argument('--in_memory', type=int, default=0, 
         choices=[0, 1], help='0:read only mmap_mode=r, 1:load into memory')
-    parser.add_argument('--dummy_feats', type=int, default=0, 
+    parser.add_argument('--dummy_feats', type=int, default=1, 
         choices=[0, 1], help='0:use actual feature, 1:use dummy feature')
     parser.add_argument('--synthetic', type=int, default=1,
         choices=[0, 1], help='0:nlp-node embeddings, 1:random')
     parser.add_argument('--all_in_edges', type=bool, default=True, 
         help="Set to false to use default relation. Set this option to True to use all the relation types in the dataset since DGL samplers require directed in edges.")
     args = parser.parse_args()
+    if args.dummy_feats:
+        print("using dummy feats")
 
     # dataset = IGBHeteroDGLDataset(args)
     # g = dataset[0]

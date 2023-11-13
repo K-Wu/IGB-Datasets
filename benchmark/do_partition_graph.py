@@ -137,13 +137,17 @@ if __name__ == "__main__":
             sym_g.ndata[key] = g.ndata[key]
         g = sym_g
 
-    dgl.distributed.partition_graph(
-        g,
-        args.dataset,
-        args.num_parts,
-        args.output,
-        part_method=args.part_method,
-        balance_ntypes=balance_ntypes,
-        balance_edges=args.balance_edges,
-        num_trainers_per_machine=args.num_trainers_per_machine,
-    )
+    # dgl.distributed.partition_graph(
+    #     g,
+    #     args.dataset,
+    #     args.num_parts,
+    #     args.output,
+    #     part_method=args.part_method,
+    #     balance_ntypes=balance_ntypes,
+    #     balance_edges=args.balance_edges,
+    #     num_trainers_per_machine=args.num_trainers_per_machine,
+    # )
+
+    from .my_partition_graph import my_random_partition_graph
+    from dgl.convert import to_homogeneous
+    my_random_partition_graph(g, args.num_parts, 1, "out_data")
