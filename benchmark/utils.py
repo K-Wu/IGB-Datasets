@@ -12,26 +12,24 @@ def get_numpy_file_shape(filename: str):
     import numpy as np
     return np.load(filename, mmap_mode='r').shape
 
+# From: https://stackoverflow.com/questions/4984647/accessing-dict-keys-like-an-attribute
+class AttributeDict(dict):
+    def __getattr__(self, attr):
+        return self[attr]
+    def __setattr__(self, attr, value):
+        self[attr] = value
+
 def get_igbh_config() ->argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--path', type=str, default='/u/kunwu2/projects/IGB-datasets/igb/igbh', #All files are in igbh/full/processed
-        help='path containing the datasets')
-    parser.add_argument('--dataset_size', type=str, default='full',
-        choices=['tiny', 'small', 'medium', 'large', 'full'], 
-        help='size of the datasets')
-    parser.add_argument('--num_classes', type=int, default=19, 
-        choices=[19, 2983], help='number of classes')
-    parser.add_argument('--load_homo_graph', type = int, default = 1,
-        choices=[0,1], help="0:load heterogeneous graph (which the original IGB dataloader provides), 1:load homogeneous graph")
-    parser.add_argument('--in_memory', type=int, default=0, 
-        choices=[0, 1], help='0:read only mmap_mode=r, 1:load into memory')
-    parser.add_argument('--dummy_feats', type=int, default=1, 
-        choices=[0, 1], help='0:use actual feature, 1:use dummy feature')
-    parser.add_argument('--synthetic', type=int, default=1,
-        choices=[0, 1], help='0:nlp-node embeddings, 1:random')
-    parser.add_argument('--all_in_edges', type=bool, default=True, 
-        help="Set to false to use default relation. Set this option to True to use all the relation types in the dataset since DGL samplers require directed in edges.")
-    args = parser.parse_args()
+
+    args = AttributeDict()
+    args.path = '/u/kunwu2/projects/IGB-datasets/igb/igbh'
+    args.dataset_size = 'full'
+    args.num_classes = 19
+    args.load_homo_graph=1
+    args.in_memory=1
+    args.dummy_feats=1
+    args.synthetic=1
+    args.all_in_edges=True
     if args.dummy_feats:
         print("using dummy feats")
 

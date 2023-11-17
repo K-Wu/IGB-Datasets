@@ -5,14 +5,29 @@ import time
 import dgl
 import torch as th
 
+from dgl.convert import to_homogeneous
 from .utils import get_igbh_config, is_pwd_correct_for_benchmark
 from igb.dataloader import IGBHeteroDGLDatasetMassive
 
-def load_igbh600m():
+def _load_igbh(dataset: str):
     args = get_igbh_config()
+    if dataset=="large":
+        args.dataset_size="large"
+    elif dataset=="full":
+        pass
+    else:
+        raise ValueError(f"Unknown igbh dataset: {dataset}")
+    print(args)
     data =  IGBHeteroDGLDatasetMassive(args)
     g = data.graph
     return g
+
+def load_igbh_large():
+    print("Loading igbh large dataset")
+    return _load_igbh("large")
+
+def load_igbh600m():
+    return _load_igbh("full")
 
 
 def load_reddit(self_loop=True):
@@ -24,6 +39,31 @@ def load_reddit(self_loop=True):
     g.ndata["labels"] = g.ndata.pop("label")
     return g, data.num_classes
 
+def load_ogb_lsc_mag_240m():
+    from ogb.lsc import MAG240MDataset
+    dataset = MAG240MDataset()
+    '''
+    edge_index is numpy.ndarray of shape (2, num_edges).
+    - first row: indices of source nodes (indexed by source node types)
+    - second row: indices of target nodes (indexed by target node types)
+    In other words, i-th edge connects from edge_index[0,i] to edge_index[1,i].
+    '''
+    edge_index_writes = dataset.edge_index('author', 'writes', 'paper') 
+    edge_index_cites = dataset.edge_index('paper', 'paper')
+    edge_index_affiliated_with = dataset.edge_index('author', 'institution')
+    graph_data = {
+        ('author', 'affiliated_with', 'institute'): (edge_index_affiliated_with[0,:], edge_index_affiliated_with[1,:]),
+        ('paper', 'cites', 'paper'): (edge_index_cites[0,:], edge_index_cites[1,:]),
+        ('author', 'writes', 'paper'): (edge_index_writes[ 0, :], edge_index_writes[ 1,:]),
+    }
+
+    num_nodes_dict = {'paper': dataset.num_papers, 'author': dataset.num_authors, 'institute': dataset.num_institutions}
+
+    graph = dgl.heterograph(graph_data, num_nodes_dict)  
+
+    return to_homogeneous(graph), dataset.num_classes
+
+    
 
 def load_ogb(name, root="dataset"):
     """Load ogbn dataset."""
@@ -67,7 +107,7 @@ if __name__ == "__main__":
         "--dataset",
         type=str,
         default="igbh600m",
-        help="datasets: igbh600m, reddit, ogbn-products, ogbn-papers100M",
+        help="datasets: igbh600m, igbhlarge, reddit, ogbn-products, ogbn-papers100M",
     )
     argparser.add_argument(
         "--num_parts", type=int, default=8, help="number of partitions"
@@ -108,10 +148,14 @@ if __name__ == "__main__":
     start = time.time()
     if args.dataset == "igbh600m":
         g = load_igbh600m()
+    elif args.dataset == "igbhlarge":
+        g = load_igbh_large()
     elif args.dataset == "reddit":
         g, _ = load_reddit()
     elif args.dataset in ["ogbn-products", "ogbn-papers100M"]:
         g, _ = load_ogb(args.dataset)
+    elif args.dataset in "mag240m":
+        g, _ = load_ogb_lsc_mag_240m()
     else:
         raise RuntimeError(f"Unknown dataset: {args.dataset}")
     print(
@@ -149,5 +193,4 @@ if __name__ == "__main__":
     # )
 
     from .my_partition_graph import my_random_partition_graph
-    from dgl.convert import to_homogeneous
-    my_random_partition_graph(g, args.num_parts, 1, "out_data")
+    my_random_partition_graph(g, args.dataset, args.num_parts, "out_data")

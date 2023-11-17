@@ -1,14 +1,17 @@
 from dgl.random import choice as random_choice
 from dgl.partition import partition_graph_with_halo
-from dgl.distributed.partition import _get_orig_ids
+from dgl.distributed.partition import _get_orig_ids, _get_inner_edge_mask, _get_inner_node_mask
 import os
+from dgl.base import EID, ETYPE, NID, NTYPE
+from dgl  import backend as F
+import numpy as np
 
 """This is a memory-efficient version of github dmlc/dgl/python/dgl/distributed/partition.py. We do not convert the input graph to a homogeneous graph."""
 def my_random_partition_graph(g, 
     graph_name,
     num_parts,
     out_path,
-    num_hops=1,num_trainers_per_machine=1,graph_formats=None):
+    num_hops=1,num_trainers_per_machine=1,return_mapping=False, part_method="random",graph_formats=None):
     # sim_g is the converted homogeneous graph in the original code, we do not convert it here
     sim_g = g
     node_parts = random_choice(num_parts, sim_g.num_nodes())

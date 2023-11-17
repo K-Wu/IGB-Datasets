@@ -19,4 +19,13 @@ which conda
 which python
 
 # Run your Python script
-python -m benchmark.do_partition_graph
+
+# If there is argument then pass it as --dataset
+# supported datasets involve mag240m, igbhlarge
+if [ "$#" -eq 0 ]
+then
+    # The dataset is by default igbh-full
+    python -m benchmark.do_partition_graph
+else
+    python -m benchmark.do_partition_graph --dataset=$1
+fi

@@ -2,21 +2,16 @@ mkdir -p igbh_large
 cd igbh_large
 
 # paper
-mkdir -p paper
-wget -O paper/node_feat.npy https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper/node_feat.npy
-wget -O paper/node_label_19.npy https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper/node_label_19.npy
-wget -O paper/node_label_2K.npy https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper/node_label_2K.npy
-wget -O paper/paper_id_index_mapping.npy https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper/paper_id_index_mapping.npy
+# mkdir -p paper
+# wget -O paper/node_feat.npy https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper/node_feat.npy
+# wget -O paper/node_label_19.npy https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper/node_label_19.npy
+# wget -O paper/node_label_2K.npy https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper/node_label_2K.npy
+# wget -O paper/paper_id_index_mapping.npy https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper/paper_id_index_mapping.npy
+
 
 # paper__cites__paper
-mkdir -p paper__cites__paper
-cd paper__cites__paper
-wget https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper__cites__paper/edge_index.npy
-cd ..
-
-# paper__cites__paper
-mkdir -p paper__cites__paper
-wget -O paper__cites__paper/edge_index.npy https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper__cites__paper/edge_index.npy
+# mkdir -p paper__cites__paper
+# wget -O paper__cites__paper/edge_index.npy https://igb-public.s3.us-east-2.amazonaws.com/igb_large/processed/paper__cites__paper/edge_index.npy
 
 # author
 mkdir -p author
