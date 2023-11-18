@@ -1,6 +1,26 @@
 import sys
 import os
 import argparse
+import subprocess
+
+def assert_git_exists() -> None:
+    """Check if git is installed and available in the path."""
+    try:
+        subprocess.check_output(["git", "--version"])
+    except Exception:  # any error means git is not installed
+        raise OSError(
+            "Git is not installed. Please install git and try again."
+        )
+
+def get_git_root_path() -> str:
+    """Get the root path of the git repository, i.e., cupy-playground."""
+    assert_git_exists()
+    return os.path.normpath(
+        subprocess.check_output(["git", "rev-parse", "--show-toplevel"])
+        .decode("utf-8")
+        .strip()
+    )
+
 
 def is_pwd_correct_for_benchmark():
     script_path: str = sys.argv[0]

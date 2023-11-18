@@ -17,13 +17,13 @@ def _load_igbh(dataset: str):
         pass
     else:
         raise ValueError(f"Unknown igbh dataset: {dataset}")
-    print(args)
+    print(args, flush=True)
     data =  IGBHeteroDGLDatasetMassive(args)
     g = data.graph
     return g
 
 def load_igbh_large():
-    print("Loading igbh large dataset")
+    print("Loading igbh large dataset", flush=True)
     return _load_igbh("large")
 
 def load_igbh600m():
@@ -51,17 +51,22 @@ def load_ogb_lsc_mag_240m():
     edge_index_writes = dataset.edge_index('author', 'writes', 'paper') 
     edge_index_cites = dataset.edge_index('paper', 'paper')
     edge_index_affiliated_with = dataset.edge_index('author', 'institution')
+    print("Constructing graph_data", flush=True)
     graph_data = {
         ('author', 'affiliated_with', 'institute'): (edge_index_affiliated_with[0,:], edge_index_affiliated_with[1,:]),
         ('paper', 'cites', 'paper'): (edge_index_cites[0,:], edge_index_cites[1,:]),
         ('author', 'writes', 'paper'): (edge_index_writes[ 0, :], edge_index_writes[ 1,:]),
     }
+    print("Constructed graph_data", flush=True)
 
     num_nodes_dict = {'paper': dataset.num_papers, 'author': dataset.num_authors, 'institute': dataset.num_institutions}
 
     graph = dgl.heterograph(graph_data, num_nodes_dict)  
+    print("Created heterograph", flush=True)
 
-    return to_homogeneous(graph), dataset.num_classes
+    graph_homo = to_homogeneous(graph)
+    print("Converted to homograph", flush=True)
+    return graph_homo, dataset.num_classes
 
     
 
@@ -159,9 +164,9 @@ if __name__ == "__main__":
     else:
         raise RuntimeError(f"Unknown dataset: {args.dataset}")
     print(
-        "Load {} takes {:.3f} seconds".format(args.dataset, time.time() - start)
+        "Load {} takes {:.3f} seconds".format(args.dataset, time.time() - start), flush=True
     )
-    print("|V|={}, |E|={}".format(g.num_nodes(), g.num_edges()))
+    print("|V|={}, |E|={}".format(g.num_nodes(), g.num_edges()), flush=True)
     # Suppress the following print because it does not work for heterograph
     # print(
     #     "train: {}, valid: {}, test: {}".format(
@@ -180,7 +185,7 @@ if __name__ == "__main__":
         for key in g.ndata:
             sym_g.ndata[key] = g.ndata[key]
         g = sym_g
-
+    print("Converted to (or skipped the conversion of) undirected graph", flush=True)
     # dgl.distributed.partition_graph(
     #     g,
     #     args.dataset,

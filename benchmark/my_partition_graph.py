@@ -1,10 +1,20 @@
 from dgl.random import choice as random_choice
 from dgl.partition import partition_graph_with_halo
-from dgl.distributed.partition import _get_orig_ids, _get_inner_edge_mask, _get_inner_node_mask
+from dgl.distributed.partition import _get_orig_ids, _get_inner_edge_mask, _get_inner_node_mask, _save_graphs, _dump_part_config
 import os
 from dgl.base import EID, ETYPE, NID, NTYPE
 from dgl  import backend as F
 import numpy as np
+
+from dgl.data.utils import save_tensors
+from dgl.partition import (
+    get_peak_mem,
+    partition_graph_with_halo,
+)
+import time
+from dgl.distributed.graph_partition_book import (
+    _etype_tuple_to_str,
+)
 
 """This is a memory-efficient version of github dmlc/dgl/python/dgl/distributed/partition.py. We do not convert the input graph to a homogeneous graph."""
 def my_random_partition_graph(g, 
@@ -15,9 +25,13 @@ def my_random_partition_graph(g,
     # sim_g is the converted homogeneous graph in the original code, we do not convert it here
     sim_g = g
     node_parts = random_choice(num_parts, sim_g.num_nodes())
+    print("random_choice done", flush=True)
+    sim_g.ndata["orig_id"] = F.arange(0, sim_g.num_nodes())
+    sim_g.edata["orig_id"] = F.arange(0, sim_g.num_edges())
     parts, orig_nids, orig_eids = partition_graph_with_halo(
-        sim_g, node_parts, num_hops#, reshuffle=True
+        sim_g, node_parts, num_hops, reshuffle=False
     )
+    print("partition_graph_with_halo done", flush=True)
     # Node mapping is in halo_subg.induced_vertices
     # according to GetSubgraphWithHalo dmlc/dgl/src/graph/transform/partition_hetero.cc
     # It can be obtained in python by subg.induced_nodes()
@@ -75,9 +89,10 @@ def my_random_partition_graph(g,
                 )
             val = np.cumsum(val).tolist()
             assert val[-1] == g.num_edges(etype)
-
     else:
         raise NotImplementedError("num_parts == 1 is not supported yet")
+    
+    print("map val production done", flush=True)
     
     start = time.time()
     ntypes = {ntype: g.get_ntype_id(ntype) for ntype in g.ntypes}
@@ -122,13 +137,13 @@ def my_random_partition_graph(g,
                             ),
                             ntype,
                             len(local_nodes),
-                        )
+                        ), flush=True
                     )
                 else:
                     print(
                         "part {} has {} nodes and {} are inside the partition".format(
                             part_id, part.num_nodes(), len(local_nodes)
-                        )
+                        ), flush=True
                     )
 
                 for name in g.nodes[ntype].data:
@@ -156,13 +171,13 @@ def my_random_partition_graph(g,
                             ),
                             etype,
                             len(local_edges),
-                        )
+                        ), flush=True
                     )
                 else:
                     print(
                         "part {} has {} edges and {} are inside the partition".format(
                             part_id, part.num_edges(), len(local_edges)
-                        )
+                        ), flush=True
                     )
                 tot_num_inner_edges += len(local_edges)
 
@@ -202,7 +217,7 @@ def my_random_partition_graph(g,
     print(
         "Save partitions: {:.3f} seconds, peak memory: {:.3f} GB".format(
             time.time() - start, get_peak_mem()
-        )
+        ), flush=True
     )
 
     _dump_part_config(f"{out_path}/{graph_name}.json", part_metadata)
@@ -213,7 +228,7 @@ def my_random_partition_graph(g,
     print(
         "There are {} edges in the graph and {} edge cuts for {} partitions.".format(
             g.num_edges(), num_cuts, num_parts
-        )
+        ), flush=True
     )
 
     if return_mapping:

@@ -15,7 +15,6 @@
 # Activate your Python environment (if needed)
 eval "$(conda shell.bash hook)"
 conda activate gids_osdi24
-which conda
 which python
 
 # Run your Python script
