@@ -19,6 +19,13 @@ job_id=$(echo $output | awk '{print $4}')
 
 # Print the job ID
 echo "Submitted job with ID: $job_id"
+
+# Try to tail until the file is found
+while ! (ls my_output.$job_id.out my_output.$job_id.err 2>/dev/null)
+do
+    echo "Waiting for output file..."
+    sleep 5
+done
+
 # Now you can use $job_id for further processing if needed
-sleep 5
 tail -f my_output.$job_id.out -f my_output.$job_id.err
