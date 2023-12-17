@@ -11,7 +11,9 @@ then
 fi
 
 echo "Executing command sbatch $@"
-
+# From https://stackoverflow.com/questions/57696302/how-to-source-another-bash-script-if-my-script-is-being-executing-by-slurm
+SCRIPTDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd )"
+export MY_TOOLKIT_PATH=$SCRIPTDIR
 output=$(sbatch "$@")
 
 # Extract the job ID from the output
@@ -28,4 +30,4 @@ do
 done
 
 # Now you can use $job_id for further processing if needed
-tail -f my_output.$job_id.out -f my_output.$job_id.err
+watch -n 5 tail -n 7 my_output.$job_id.out -n 7 my_output.$job_id.err
