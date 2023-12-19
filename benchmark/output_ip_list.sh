@@ -31,6 +31,7 @@ done
 echo "hostname $(hostname) The IP address of the node is $ip."
 echo "ips ${ips[@]}"
 
+echo "Content in /tmp/node_lists.$SLURM_JOB_ID.out"
 cat /tmp/node_lists.$SLURM_JOB_ID.out
 }
 output_all_ips

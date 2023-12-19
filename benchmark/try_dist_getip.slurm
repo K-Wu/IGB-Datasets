@@ -10,7 +10,6 @@
 #SBATCH --output=my_output.%j.out
 #SBATCH --error=my_output.%j.err
 
-# define a function
 echo $MY_TOOLKIT_PATH
 srun bash $MY_TOOLKIT_PATH/output_ip_list.sh
 
