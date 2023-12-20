@@ -15,4 +15,5 @@ python $MY_TOOLKIT_PATH/playground/wait_10.py &
 
 wait
 # Check parallelism by executing sacct -j<jobid> --format=JobID,Start,End,Elapsed,NCPUS
+# Command reference: https://pybind11.readthedocs.io/en/stable/advanced/smart_ptrs.html
 # The two are executed in parallel, meaning python execution won't be contrained by the number of tasks.
