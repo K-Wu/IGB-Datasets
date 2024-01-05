@@ -13,6 +13,11 @@
 python $MY_TOOLKIT_PATH/playground/wait_10.py &
 python $MY_TOOLKIT_PATH/playground/wait_10.py &
 
+# srim and then kill it
+srun -n 1 python $MY_TOOLKIT_PATH/playground/wait_10.py &
+sleep 5
+scancel --signal=KILL $SLURM_JOBID.0
+
 wait
 # Check parallelism by executing sacct -j<jobid> --format=JobID,Start,End,Elapsed,NCPUS
 # Command reference: https://pybind11.readthedocs.io/en/stable/advanced/smart_ptrs.html
