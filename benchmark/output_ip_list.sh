@@ -3,6 +3,7 @@ function output_all_ips {
 # e.g., SLURM_JOB_NODELIST is hydro[05-06]
 # We obtain node_lists as hydro05 hydro06
 node_lists=$(scontrol show hostnames $SLURM_JOB_NODELIST)
+echo "node lists $node_lists"
 node_lists=(${node_lists[@]})
 echo "node lists ${node_lists[@]}"
 echo "the first in node lists ${node_lists[0]}"
