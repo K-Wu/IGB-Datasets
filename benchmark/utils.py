@@ -62,3 +62,7 @@ def get_igbh_config() ->argparse.ArgumentParser:
     # print()
 
     return args
+
+def get_igb_config() -> argparse.ArgumentParser:
+    """IGB uses the same arguments as IGBH, and use a subset of the files on disk in IGBH"""
+    return get_igbh_config()

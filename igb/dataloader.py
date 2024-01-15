@@ -42,12 +42,13 @@ def get_bafs_path(*relative_path_args):
 
 class IGB260M(object):
     def __init__(self, root: str, size: str, in_memory: int, \
-        classes: int, synthetic: int):
+        classes: int, synthetic: int, dummy_feats: bool):
         self.dir = root
         self.size = size
         self.synthetic = synthetic
         self.in_memory = in_memory
         self.num_classes = classes
+        self.dummy_feats = dummy_feats
 
     def num_nodes(self):
         if self.size == 'experimental':
@@ -64,6 +65,8 @@ class IGB260M(object):
     @property
     def paper_feat(self) -> np.ndarray:
         num_nodes = self.num_nodes()
+        if self.dummy_feats:
+            return np.ones((num_nodes, 1))
         # TODO: temp for bafs. large and full special case
         if self.size == 'large' or self.size == 'full':
             if is_this_machine_bafs():
@@ -145,7 +148,7 @@ class IGB260MDGLDataset(DGLDataset):
 
     def process(self):
         dataset = IGB260M(root=self.dir, size=self.args.dataset_size, in_memory=self.args.in_memory, \
-            classes=self.args.num_classes, synthetic=self.args.synthetic)
+            classes=self.args.num_classes, synthetic=self.args.synthetic,dummy_feats=self.args.dummy_feats)
 
         node_features = torch.from_numpy(dataset.paper_feat)
         node_edges = torch.from_numpy(dataset.paper_edge)
@@ -434,6 +437,10 @@ class IGBHeteroDGLDataset(DGLDataset):
 
 
 class IGBHeteroDGLDatasetMassive(DGLDataset):
+    """Compared with IGBHeteroDGLDataset, this class is essentially the same but introduced two features
+    1) Use mmap to load features. This is optimization for massive dataset.
+    2) Add the homogeneous graph construction option.
+    """
     def __init__(self, args):
         self.dir = args.path
         self.args = args

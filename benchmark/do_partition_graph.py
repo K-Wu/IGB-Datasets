@@ -6,17 +6,17 @@ import dgl
 import torch as th
 
 from dgl.convert import to_homogeneous
-from .utils import get_igbh_config, is_pwd_correct_for_benchmark
-from igb.dataloader import IGBHeteroDGLDatasetMassive
+from .utils import get_igbh_config, get_igb_config, is_pwd_correct_for_benchmark
+from igb.dataloader import IGBHeteroDGLDatasetMassive, IGB260MDGLDataset
 
-def _load_igbh(dataset: str):
+def _load_igbh(dataset_size: str):
     args = get_igbh_config()
-    if dataset=="large":
+    if dataset_size=="large":
         args.dataset_size="large"
-    elif dataset=="full":
+    elif dataset_size=="full":
         pass
     else:
-        raise ValueError(f"Unknown igbh dataset: {dataset}")
+        raise ValueError(f"Unknown igbh dataset_size: {dataset_size}")
     print(args, flush=True)
     data =  IGBHeteroDGLDatasetMassive(args)
     g = data.graph
@@ -28,6 +28,23 @@ def load_igbh_large():
 
 def load_igbh600m():
     return _load_igbh("full")
+
+def _load_igb(dataset_size: str):
+    args = get_igb_config()
+    if dataset_size=="large":
+        args.dataset_size="large"
+    elif dataset_size=="full":
+        pass
+    else:
+        raise ValueError(f"Unknown igb dataset_size: {dataset_size}")
+    print(args, flush=True)
+    data = IGB260MDGLDataset(args)
+    g = data.graph
+    return g
+
+
+def load_igb240m():
+    return _load_igb("full")
 
 
 def load_reddit(self_loop=True):
@@ -155,6 +172,8 @@ if __name__ == "__main__":
         g = load_igbh600m()
     elif args.dataset == "igbhlarge":
         g = load_igbh_large()
+    elif args.dataset == "igb240m":
+        g = load_igb240m()
     elif args.dataset == "reddit":
         g, _ = load_reddit()
     elif args.dataset in ["ogbn-products", "ogbn-papers100M"]:
