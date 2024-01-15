@@ -8,6 +8,38 @@ from dgl.data import DGLDataset
 import warnings
 warnings.filterwarnings("ignore")
 
+def is_this_machine_bafs():
+    import socket
+    return socket.gethostname() == 'bafs-01'
+
+BAFS_FILE_MAPPING = {
+'/mnt/nvme16/IGB260M_part_2/full/processed/paper/node_label_19_extended.npy' :'//full/processed/paper/node_label_19.npy',
+'/mnt/nvme16/IGB260M_part_2/full/processed/paper/node_label_2K_extended.npy' :'//full/processed/paper/node_label_2K.npy',
+'/mnt/nvme16/IGB260M_part_2/processed/paper/paper_id_index_mapping.npy' :'//full/processed/paper/paper_id_index_mapping.npy',
+'/mnt/nvme16/IGB260M_part_2/processed/paper__cites__paper/edge_index.npy' :'//full/processed/paper__cites__paper/edge_index.npy',
+'/mnt/nvme17/node_feat.npy' :'//full/processed/paper/node_feat.npy',
+'/mnt/nvme16/IGB260M_part_2/full/processed/fos/fos_id_index_mapping.npy' :'//full/processed/fos/fos_id_index_mapping.npy',
+'/mnt/nvme16/IGB260M_part_2/full/processed/fos/node_feat.npy' :'//full/processed/fos/node_feat.npy',
+'/mnt/nvme16/IGB260M_part_2/full/processed/paper__topic__fos/edge_index.npy' :'//full/processed/paper__topic__fos/edge_index.npy',
+'/mnt/nvme16/IGB260M_part_2/full/processed/paper/paper_id_index_mapping.npy' :'//full/processed/paper/paper_id_index_mapping.npy',
+'/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_col_idx.npy' :'//full/processed/paper__cites__paper/edge_index_col_idx.npy',
+'/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_csc_edge_idx.npy' :'//full/processed/paper__cites__paper/edge_index_csc_edge_idx.npy',
+'/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_edge_idx.npy' :'//full/processed/paper__cites__paper/edge_index_edge_idx.npy',
+'/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_row_idx.npy' :'//full/processed/paper__cites__paper/edge_index_row_idx.npy',
+'/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_csc_col_idx.npy' :'//full/processed/paper__cites__paper/edge_index_csc_col_idx.npy',
+'/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_csc_row_idx.npy' :'//full/processed/paper__cites__paper/edge_index_csc_row_idx.npy',
+'/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index.npy' :'//full/processed/paper__cites__paper/edge_index.npy'
+}
+
+def get_bafs_path(**relative_path_args):
+    return '/' + BAFS_FILE_MAPPING[osp.join(**relative_path_args)]
+    
+
+
+# Overwritten by the _extended version. aws s3 cp /mnt/nvme16/IGB260M_part_2/processed/paper/node_label_19.npy s3://vikram3/full/processed/paper/node_label_19.npy
+# Overwritten by the _extended version. aws s3 cp /mnt/nvme16/IGB260M_part_2/processed/paper/node_label_2K.npy s3://vikram3/full/processed/paper/node_label_2K.npy
+# Overwritten by the repeated command. aws s3 cp /mnt/nvme17/node_feat.npy s3://vikram3/full/processed/paper/node_feat.npy --cli-connect-timeout 3600
+
 class IGB260M(object):
     def __init__(self, root: str, size: str, in_memory: int, \
         classes: int, synthetic: int):
@@ -34,10 +66,16 @@ class IGB260M(object):
         num_nodes = self.num_nodes()
         # TODO: temp for bafs. large and full special case
         if self.size == 'large' or self.size == 'full':
-            path = osp.join(self.dir, 'full', 'processed', 'paper', 'node_feat.npy')
+            if is_this_machine_bafs():
+                path = get_bafs_path('full', 'processed', 'paper', 'node_feat.npy')
+            else:
+                path = osp.join(self.dir, 'full', 'processed', 'paper', 'node_feat.npy')
             emb = np.memmap(path, dtype='float32', mode='r',  shape=(num_nodes,1024))
         else:
-            path = osp.join(self.dir, self.size, 'processed', 'paper', 'node_feat.npy')
+            if is_this_machine_bafs():
+                path = get_bafs_path(self.size, 'processed', 'paper', 'node_feat.npy')
+            else:
+                path = osp.join(self.dir, self.size, 'processed', 'paper', 'node_feat.npy')
             if self.synthetic:
                 emb = np.random.rand(num_nodes, 1024).astype('f')
             else:
@@ -54,19 +92,31 @@ class IGB260M(object):
         if self.size == 'large' or self.size == 'full':
             num_nodes = self.num_nodes()
             if self.num_classes == 19:
-                path = osp.join(self.dir, 'full', 'processed', 'paper', 'node_label_19.npy')
+                if is_this_machine_bafs():
+                    path = get_bafs_path('full', 'processed', 'paper', 'node_label_19.npy')
+                else:
+                    path = osp.join(self.dir, 'full', 'processed', 'paper', 'node_label_19.npy')
                 node_labels = np.memmap(path, dtype='float32', mode='r',  shape=(num_nodes))
                 # Actual number 227130858
             else:
-                path = osp.join(self.dir, 'full', 'processed', 'paper', 'node_label_2K.npy')
+                if is_this_machine_bafs():
+                    path = get_bafs_path('full', 'processed', 'paper', 'node_label_2K.npy')
+                else:
+                    path = osp.join(self.dir, 'full', 'processed', 'paper', 'node_label_2K.npy')
                 node_labels = np.memmap(path, dtype='float32', mode='r',  shape=(num_nodes))
                 # Actual number 157675969
 
         else:
             if self.num_classes == 19:
-                path = osp.join(self.dir, self.size, 'processed', 'paper', 'node_label_19.npy')
+                if is_this_machine_bafs():
+                    path = get_bafs_path(self.size, 'processed', 'paper', 'node_label_19.npy')
+                else:
+                    path = osp.join(self.dir, self.size, 'processed', 'paper', 'node_label_19.npy')
             else:
-                path = osp.join(self.dir, self.size, 'processed', 'paper', 'node_label_2K.npy')
+                if is_this_machine_bafs():
+                    path = get_bafs_path(self.size, 'processed', 'paper', 'node_label_2K.npy')
+                else:
+                    path = osp.join(self.dir, self.size, 'processed', 'paper', 'node_label_2K.npy')
             if self.in_memory:
                 node_labels = np.load(path)
             else:
@@ -75,7 +125,10 @@ class IGB260M(object):
 
     @property
     def paper_edge(self) -> np.ndarray:
-        path = osp.join(self.dir, self.size, 'processed', 'paper__cites__paper', 'edge_index.npy')
+        if is_this_machine_bafs():
+            path = get_bafs_path(self.size, 'processed', 'paper__cites__paper', 'edge_index.npy')
+        else:
+            path = osp.join(self.dir, self.size, 'processed', 'paper__cites__paper', 'edge_index.npy')
         # if self.size == 'full':
         #     path = '/mnt/nvme15/IGB260M_part_2/full/processed/paper__cites__paper/edge_index.npy'
         if self.in_memory:
@@ -159,24 +212,70 @@ class IGBHeteroDGLDataset(DGLDataset):
 
     def process(self):
         if self.args.in_memory:
-            paper_paper_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed',
-            'paper__cites__paper', 'edge_index.npy')))
-            author_paper_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper__written_by__author', 'edge_index.npy')))
-            affiliation_author_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'author__affiliated_to__institute', 'edge_index.npy')))
-            paper_fos_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper__topic__fos', 'edge_index.npy')))
+            if is_this_machine_bafs():
+                paper_paper_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'paper__cites__paper', 'edge_index.npy')
+            else:   
+                paper_paper_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'paper__cites__paper', 'edge_index.npy')
+            paper_paper_edges = torch.from_numpy(np.load(paper_paper_edges_path))
+
+            if is_this_machine_bafs():
+                author_paper_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'paper__written_by__author', 'edge_index.npy')
+            else:
+                author_paper_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'paper__written_by__author', 'edge_index.npy')
+            author_paper_edges = torch.from_numpy(np.load(author_paper_edges_path))
+
+            if is_this_machine_bafs():
+                affiliation_author_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'author__affiliated_to__institute', 'edge_index.npy')
+            else:
+                affiliation_author_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'author__affiliated_to__institute', 'edge_index.npy')
+            affiliation_author_edges = torch.from_numpy(np.load(affiliation_author_edges_path))
+
+            if is_this_machine_bafs():
+                paper_fos_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'paper__topic__fos', 'edge_index.npy')
+            else:
+                paper_fos_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'paper__topic__fos', 'edge_index.npy')
+            paper_fos_edges = torch.from_numpy(np.load(paper_fos_edges_path))
 
         else:
-            paper_paper_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed',
-            'paper__cites__paper', 'edge_index.npy'), mmap_mode='r'))
-            author_paper_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper__written_by__author', 'edge_index.npy'), mmap_mode='r'))
-            affiliation_author_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'author__affiliated_to__institute', 'edge_index.npy'), mmap_mode='r'))
-            paper_fos_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper__topic__fos', 'edge_index.npy'), mmap_mode='r'))
+            if is_this_machine_bafs():
+                paper_paper_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'paper__cites__paper', 'edge_index.npy')
+            else:
+                paper_paper_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'paper__cites__paper', 'edge_index.npy')
+            paper_paper_edges = torch.from_numpy(np.load(paper_paper_edges_path, mmap_mode='r'))
+
+            if is_this_machine_bafs():
+                author_paper_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'paper__written_by__author', 'edge_index.npy')
+            else:
+                author_paper_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'paper__written_by__author', 'edge_index.npy')
+            author_paper_edges = torch.from_numpy(np.load(author_paper_edges_path, mmap_mode='r'))
+
+            if is_this_machine_bafs():
+                affiliation_author_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'author__affiliated_to__institute', 'edge_index.npy')
+            else:
+                affiliation_author_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'author__affiliated_to__institute', 'edge_index.npy')
+            affiliation_author_edges = torch.from_numpy(np.load(affiliation_author_edges_path, mmap_mode='r'))
+
+            if is_this_machine_bafs():
+                paper_fos_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'paper__topic__fos', 'edge_index.npy')
+            else:
+                paper_fos_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'paper__topic__fos', 'edge_index.npy')
+            paper_fos_edges = torch.from_numpy(np.load(paper_fos_edges_path, mmap_mode='r'))
 
 
         if self.args.all_in_edges:
@@ -197,51 +296,111 @@ class IGBHeteroDGLDataset(DGLDataset):
         self.graph.predict = 'paper'
 
         if self.args.in_memory:
-            paper_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper', 'node_feat.npy')))
-            if self.args.num_classes == 19:
-                paper_node_labels = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper', 'node_label_19.npy'))).to(torch.long)  
+            if is_this_machine_bafs():
+                paper_node_features_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'paper', 'node_feat.npy')
             else:
-                torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper', 'node_label_2K.npy'))).to(torch.long)
+                paper_node_features_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'paper', 'node_feat.npy')
+            paper_node_features = torch.from_numpy(np.load(paper_node_features_path))
+            if self.args.num_classes == 19:
+                if is_this_machine_bafs():
+                    paper_node_labels_path = get_bafs_path(self.args.dataset_size, 'processed',
+                    'paper', 'node_label_19.npy')
+                else:
+                    paper_node_labels_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                    'paper', 'node_label_19.npy')
+                paper_node_labels = torch.from_numpy(np.load(paper_node_labels_path)).to(torch.long)  
+            else:
+                if is_this_machine_bafs():
+                    paper_node_labels_path = get_bafs_path(self.args.dataset_size, 'processed',
+                    'paper', 'node_label_2K.npy')
+                else:
+                    paper_node_labels_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                    'paper', 'node_label_2K.npy')
+                paper_node_labels = torch.from_numpy(np.load(paper_node_labels_path)).to(torch.long)
         else:
-            paper_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper', 'node_feat.npy'), mmap_mode='r'))
-            if self.args.num_classes == 19:
-                paper_node_labels = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper', 'node_label_19.npy'), mmap_mode='r')).to(torch.long)  
+            if is_this_machine_bafs():
+                paper_node_features_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'paper', 'node_feat.npy')
             else:
-                paper_node_labels = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper', 'node_label_2K.npy'), mmap_mode='r')).to(torch.long)                
+                paper_node_features_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'paper', 'node_feat.npy')
+            paper_node_features = torch.from_numpy(np.load(paper_node_features_path, mmap_mode='r'))
+            if self.args.num_classes == 19:
+                if is_this_machine_bafs():
+                    paper_node_labels_path = get_bafs_path(self.args.dataset_size, 'processed',
+                    'paper', 'node_label_19.npy')
+                else:
+                    paper_node_labels_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                    'paper', 'node_label_19.npy')
+                paper_node_labels = torch.from_numpy(np.load(paper_node_labels_path, mmap_mode='r')).to(torch.long)  
+            else:
+                if is_this_machine_bafs():
+                    paper_node_labels_path = get_bafs_path(self.args.dataset_size, 'processed',
+                    'paper', 'node_label_2K.npy')
+                else:
+                    paper_node_labels_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                    'paper', 'node_label_2K.npy')
+                paper_node_labels = torch.from_numpy(np.load(paper_node_labels_path, mmap_mode='r')).to(torch.long)                
 
         self.graph.nodes['paper'].data['feat'] = paper_node_features
         self.graph.num_paper_nodes = paper_node_features.shape[0]
         self.graph.nodes['paper'].data['label'] = paper_node_labels
         if self.args.in_memory:
-            author_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'author', 'node_feat.npy')))
+            if is_this_machine_bafs():
+                author_node_features_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'author', 'node_feat.npy')
+            else:
+                author_node_features_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'author', 'node_feat.npy')
+            author_node_features = torch.from_numpy(np.load(author_node_features_path))
         else:
-            author_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'author', 'node_feat.npy'), mmap_mode='r'))
+            if is_this_machine_bafs():
+                author_node_features_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'author', 'node_feat.npy')
+            else:
+                author_node_features_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'author', 'node_feat.npy')
+            author_node_features = torch.from_numpy(np.load(author_node_features_path, mmap_mode='r'))
         self.graph.nodes['author'].data['feat'] = author_node_features
         self.graph.num_author_nodes = author_node_features.shape[0]
 
         if self.args.in_memory:
-            institute_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'institute', 'node_feat.npy')))       
+            if is_this_machine_bafs():
+                institute_node_features_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'institute', 'node_feat.npy')
+            else:
+                institute_node_features_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'institute', 'node_feat.npy')
+            institute_node_features = torch.from_numpy(np.load(institute_node_features_path))       
         else:
-            institute_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'institute', 'node_feat.npy'), mmap_mode='r'))
+            if is_this_machine_bafs():
+                institute_node_features_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'institute', 'node_feat.npy')
+            else:
+                institute_node_features_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'institute', 'node_feat.npy')
+            institute_node_features = torch.from_numpy(np.load(institute_node_features_path, mmap_mode='r'))
         self.graph.nodes['institute'].data['feat'] = institute_node_features
         self.graph.num_institute_nodes = institute_node_features.shape[0]
 
         if self.args.in_memory:
-            fos_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'fos', 'node_feat.npy')))       
+            if is_this_machine_bafs():
+                fos_node_features_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'fos', 'node_feat.npy')
+            else:
+                fos_node_features_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'fos', 'node_feat.npy')
+            fos_node_features = torch.from_numpy(np.load(fos_node_features_path))       
         else:
-            fos_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'fos', 'node_feat.npy'), mmap_mode='r'))
+            if is_this_machine_bafs():
+                fos_node_features_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'fos', 'node_feat.npy')
+            else:
+                fos_node_features_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'fos', 'node_feat.npy')
+            fos_node_features = torch.from_numpy(np.load(fos_node_features_path, mmap_mode='r'))
         self.graph.nodes['fos'].data['feat'] = fos_node_features
         self.graph.num_fos_nodes = fos_node_features.shape[0]
         
@@ -282,23 +441,69 @@ class IGBHeteroDGLDatasetMassive(DGLDataset):
 
     def process(self):
         if self.args.in_memory:
-            paper_paper_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper__cites__paper', 'edge_index.npy')))
-            author_paper_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper__written_by__author', 'edge_index.npy')))
-            affiliation_author_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'author__affiliated_to__institute', 'edge_index.npy')))
-            paper_fos_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper__topic__fos', 'edge_index.npy')))
+            if is_this_machine_bafs():
+                paper_paper_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'paper__cites__paper', 'edge_index.npy')
+            else:
+                paper_paper_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'paper__cites__paper', 'edge_index.npy')
+            paper_paper_edges = torch.from_numpy(np.load(paper_paper_edges_path))
+
+            if is_this_machine_bafs():
+                author_paper_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'paper__written_by__author', 'edge_index.npy')
+            else:
+                author_paper_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'paper__written_by__author', 'edge_index.npy')
+            author_paper_edges = torch.from_numpy(np.load(author_paper_edges_path))
+
+            if is_this_machine_bafs():
+                affiliation_author_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'author__affiliated_to__institute', 'edge_index.npy')
+            else:
+                affiliation_author_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'author__affiliated_to__institute', 'edge_index.npy')
+            affiliation_author_edges = torch.from_numpy(np.load(affiliation_author_edges_path))
+
+            if is_this_machine_bafs():
+                paper_fos_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'paper__topic__fos', 'edge_index.npy')
+            else:
+                paper_fos_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'paper__topic__fos', 'edge_index.npy')
+            paper_fos_edges = torch.from_numpy(np.load(paper_fos_edges_path))
         else:
-            paper_paper_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper__cites__paper', 'edge_index.npy'), mmap_mode='r'))
-            author_paper_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper__written_by__author', 'edge_index.npy'), mmap_mode='r'))
-            affiliation_author_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'author__affiliated_to__institute', 'edge_index.npy'), mmap_mode='r'))
-            paper_fos_edges = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'paper__topic__fos', 'edge_index.npy'), mmap_mode='r'))
+            if is_this_machine_bafs():
+                paper_paper_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'paper__cites__paper', 'edge_index.npy')
+            else:
+                paper_paper_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'paper__cites__paper', 'edge_index.npy')
+            paper_paper_edges = torch.from_numpy(np.load(paper_paper_edges_path, mmap_mode='r'))
+
+            if is_this_machine_bafs():
+                author_paper_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'paper__written_by__author', 'edge_index.npy')
+            else:
+                author_paper_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'paper__written_by__author', 'edge_index.npy')
+            author_paper_edges = torch.from_numpy(np.load(author_paper_edges_path, mmap_mode='r'))
+
+            if is_this_machine_bafs():
+                affiliation_author_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'author__affiliated_to__institute', 'edge_index.npy')
+            else:
+                affiliation_author_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'author__affiliated_to__institute', 'edge_index.npy')
+            affiliation_author_edges = torch.from_numpy(np.load(affiliation_author_edges_path, mmap_mode='r'))
+
+            if is_this_machine_bafs():
+                paper_fos_edges_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'paper__topic__fos', 'edge_index.npy')
+            else:
+                paper_fos_edges_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'paper__topic__fos', 'edge_index.npy')
+            paper_fos_edges = torch.from_numpy(np.load(paper_fos_edges_path, mmap_mode='r'))
 
         if self.args.dataset_size == "full":
             num_paper_nodes = 269346174
@@ -306,41 +511,83 @@ class IGBHeteroDGLDatasetMassive(DGLDataset):
                 # Create features with hidden dimension as 1 to reduce memory cost during partitioning and load partition
                 paper_node_features = torch.ones(num_paper_nodes, 1)
             else:
-                paper_node_features = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
-                'paper', 'node_feat.npy'), dtype='float32', mode='r',  shape=(num_paper_nodes,1024)))
+                if is_this_machine_bafs():
+                    paper_node_features_path = get_bafs_path("full", 'processed',
+                    'paper', 'node_feat.npy')
+                else:
+                    paper_node_features_path = osp.join(self.dir, "full", 'processed',
+                    'paper', 'node_feat.npy')
+                paper_node_features = torch.from_numpy(np.memmap(paper_node_features_path, dtype='float32', mode='r',  shape=(num_paper_nodes,1024)))
             if self.args.num_classes == 19:
-                paper_node_labels = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
-                'paper', 'node_label_19.npy'), dtype='float32', mode='r',  shape=(num_paper_nodes))).to(torch.long)
+                if is_this_machine_bafs():
+                    paper_node_labels_path = get_bafs_path("full", 'processed',
+                    'paper', 'node_label_19.npy')
+                else:
+                    paper_node_labels_path = osp.join(self.dir, "full", 'processed',
+                    'paper', 'node_label_19.npy')
+                paper_node_labels = torch.from_numpy(np.memmap(paper_node_labels_path, dtype='float32', mode='r',  shape=(num_paper_nodes))).to(torch.long)
             elif self.args.num_classes == 2983:
-                paper_node_labels = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
-                'paper', 'node_label_2K.npy'), dtype='float32', mode='r',  shape=(num_paper_nodes))).to(torch.long)
+                if is_this_machine_bafs():
+                    paper_node_labels_path = get_bafs_path("full", 'processed',
+                    'paper', 'node_label_2K.npy')
+                else:
+                    paper_node_labels_path = osp.join(self.dir, "full", 'processed',
+                    'paper', 'node_label_2K.npy')
+                paper_node_labels = torch.from_numpy(np.memmap(paper_node_labels_path, dtype='float32', mode='r',  shape=(num_paper_nodes))).to(torch.long)
             num_author_nodes = 277220883
             if self.args.dummy_feats:
                 # Create features with hidden dimension as 1 to reduce memory cost during partitioning and load partition
                 author_node_features = torch.ones(num_author_nodes, 1)
             else:
-                author_node_features = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
-                'author', 'node_feat.npy'), dtype='float32', mode='r',  shape=(num_author_nodes,1024)))
+                if is_this_machine_bafs():
+                    author_node_features_path = get_bafs_path("full", 'processed',
+                    'author', 'node_feat.npy')
+                else:
+                    author_node_features_path = osp.join(self.dir, "full", 'processed',
+                    'author', 'node_feat.npy')
+                author_node_features = torch.from_numpy(np.memmap(author_node_features_path, dtype='float32', mode='r',  shape=(num_author_nodes,1024)))
 
         elif self.args.dataset_size == "large":
             num_paper_nodes = 100000000
             if self.args.dummy_feats:
                 raise NotImplementedError("dummy_feats not implemented for large igbh")
             else:
+                # The original code uses 'full' for the path. https://github.com/IllinoisGraphBenchmark/IGB-Datasets/blob/main/igb/dataloader.py#L321
+                if is_this_machine_bafs():
+                    paper_node_features_path = get_bafs_path("full", 'processed',
+                    'paper', 'node_feat.npy')
+                else:
+                    paper_node_features_path = osp.join(self.dir, "full", 'processed',
+                    'paper', 'node_feat.npy')
                 paper_node_features = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
                 'paper', 'node_feat.npy'), dtype='float32', mode='r',  shape=(num_paper_nodes,1024)))
             if self.args.num_classes == 19:
-                paper_node_labels = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
-                'paper', 'node_label_19.npy'), dtype='float32', mode='r',  shape=(num_paper_nodes))).to(torch.long)
+                if is_this_machine_bafs():
+                    paper_node_labels_path = get_bafs_path("full", 'processed',
+                    'paper', 'node_label_19.npy')
+                else:
+                    paper_node_labels_path = osp.join(self.dir, "full", 'processed',
+                    'paper', 'node_label_19.npy')
+                paper_node_labels = torch.from_numpy(np.memmap(paper_node_labels_path, dtype='float32', mode='r',  shape=(num_paper_nodes))).to(torch.long)
             elif self.args.num_classes == 2983:
-                paper_node_labels = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
-                'paper', 'node_label_2K.npy'), dtype='float32', mode='r',  shape=(num_paper_nodes))).to(torch.long)
+                if is_this_machine_bafs():
+                    paper_node_labels_path = get_bafs_path("full", 'processed',
+                    'paper', 'node_label_2K.npy')
+                else:
+                    paper_node_labels_path = osp.join(self.dir, "full", 'processed',
+                    'paper', 'node_label_2K.npy')
+                paper_node_labels = torch.from_numpy(np.memmap(paper_node_labels_path, dtype='float32', mode='r',  shape=(num_paper_nodes))).to(torch.long)
             num_author_nodes = 116959896
             if self.args.dummy_feats:
                 raise NotImplementedError("dummy_feats not implemented for large igbh")
-            else:        
-                author_node_features = torch.from_numpy(np.memmap(osp.join(self.dir, "full", 'processed', 
-                'author', 'node_feat.npy'), dtype='float32', mode='r',  shape=(num_author_nodes,1024)))
+            else:
+                if is_this_machine_bafs():
+                    author_node_features_path = get_bafs_path("full", 'processed',
+                    'author', 'node_feat.npy')
+                else:
+                    author_node_features_path = osp.join(self.dir, "full", 'processed',
+                    'author', 'node_feat.npy')
+                author_node_features = torch.from_numpy(np.memmap(author_node_features_path, dtype='float32', mode='r',  shape=(num_author_nodes,1024)))
 
         if self.args.dummy_feats:
             # Create features with hidden dimension as 1 to reduce memory cost during partitioning and load partition
@@ -352,10 +599,21 @@ class IGBHeteroDGLDatasetMassive(DGLDataset):
             institute_node_features = torch.ones(num_institute_nodes, 1)
             fos_node_features = torch.ones(num_fos_nodes, 1)
         else:
-            institute_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'institute', 'node_feat.npy'), mmap_mode='r'))
-            fos_node_features = torch.from_numpy(np.load(osp.join(self.dir, self.args.dataset_size, 'processed', 
-            'fos', 'node_feat.npy'), mmap_mode='r'))
+            if is_this_machine_bafs():
+                institute_node_features_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'institute', 'node_feat.npy')
+            else:
+                institute_node_features_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'institute', 'node_feat.npy')
+            institute_node_features = torch.from_numpy(np.load(institute_node_features_path, mmap_mode='r'))
+
+            if is_this_machine_bafs():
+                fos_node_features_path = get_bafs_path(self.args.dataset_size, 'processed',
+                'fos', 'node_feat.npy')
+            else:
+                fos_node_features_path = osp.join(self.dir, self.args.dataset_size, 'processed',
+                'fos', 'node_feat.npy')
+            fos_node_features = torch.from_numpy(np.load(fos_node_features_path, mmap_mode='r'))
         num_nodes_dict = {'paper': num_paper_nodes, 'author': num_author_nodes, 'institute': len(institute_node_features), 'fos': len(fos_node_features)}
 
 
