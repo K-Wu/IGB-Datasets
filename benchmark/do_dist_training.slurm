@@ -1,0 +1,35 @@
+#!/bin/bash
+#SBATCH --ntasks-per-node=1
+#SBATCH --time=167:59:00
+#SBATCH -p a100
+#SBATCH --exclusive
+#SBATCH --ntasks-per-node=2
+#SBATCH --nodes=2
+#SBATCH --mem=0
+#SBATCH --job-name=partition_graph
+#SBATCH --output=my_output.%j.out
+#SBATCH --error=my_output.%j.err
+
+# Load any necessary modules (e.g., Anaconda)
+
+
+# Activate your Python environment (if needed)
+eval "$(conda shell.bash hook)"
+conda activate gids_osdi24
+which python
+
+# Run your Python script
+# MY_TOOLKIT_PATH is set in sbatch_and_tail.sh and is /benchmark
+srun bash $MY_TOOLKIT_PATH/output_ip_list.sh
+
+
+# If there is argument then pass it as --graph_name
+# supported datasets involve mag240m, igbhlarge
+# num_gpus seems to specify number of GPUs per node
+if [ "$#" -eq 0 ]
+then
+    # The dataset is by default igbh-full
+    python -m benchmark.do_graphsage_node_classification --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --num_gpus=2 --part_config=$MY_TOOLKIT_PATH/../out_dataset/reddit/reddit.json --graph_name=reddit
+else
+    python -m benchmark.do_graphsage_node_classification --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --num_gpus=2 --part_config=$MY_TOOLKIT_PATH/../out_dataset/$1/$1.json --graph_name=$1
+fi
