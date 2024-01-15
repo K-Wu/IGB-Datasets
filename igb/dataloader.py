@@ -31,8 +31,8 @@ BAFS_FILE_MAPPING = {
 '/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index.npy' :'//full/processed/paper__cites__paper/edge_index.npy'
 }
 
-def get_bafs_path(**relative_path_args):
-    return '/' + BAFS_FILE_MAPPING[osp.join(**relative_path_args)]
+def get_bafs_path(*relative_path_args):
+    return BAFS_FILE_MAPPING['//' + osp.join(*relative_path_args)]
     
 
 
