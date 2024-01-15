@@ -13,22 +13,22 @@ def is_this_machine_bafs():
     return socket.gethostname() == 'bafs-01'
 
 BAFS_FILE_MAPPING = {
-'/mnt/nvme16/IGB260M_part_2/full/processed/paper/node_label_19_extended.npy' :'//full/processed/paper/node_label_19.npy',
-'/mnt/nvme16/IGB260M_part_2/full/processed/paper/node_label_2K_extended.npy' :'//full/processed/paper/node_label_2K.npy',
-'/mnt/nvme16/IGB260M_part_2/processed/paper/paper_id_index_mapping.npy' :'//full/processed/paper/paper_id_index_mapping.npy',
-'/mnt/nvme16/IGB260M_part_2/processed/paper__cites__paper/edge_index.npy' :'//full/processed/paper__cites__paper/edge_index.npy',
-'/mnt/nvme17/node_feat.npy' :'//full/processed/paper/node_feat.npy',
-'/mnt/nvme16/IGB260M_part_2/full/processed/fos/fos_id_index_mapping.npy' :'//full/processed/fos/fos_id_index_mapping.npy',
-'/mnt/nvme16/IGB260M_part_2/full/processed/fos/node_feat.npy' :'//full/processed/fos/node_feat.npy',
-'/mnt/nvme16/IGB260M_part_2/full/processed/paper__topic__fos/edge_index.npy' :'//full/processed/paper__topic__fos/edge_index.npy',
-'/mnt/nvme16/IGB260M_part_2/full/processed/paper/paper_id_index_mapping.npy' :'//full/processed/paper/paper_id_index_mapping.npy',
-'/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_col_idx.npy' :'//full/processed/paper__cites__paper/edge_index_col_idx.npy',
-'/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_csc_edge_idx.npy' :'//full/processed/paper__cites__paper/edge_index_csc_edge_idx.npy',
-'/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_edge_idx.npy' :'//full/processed/paper__cites__paper/edge_index_edge_idx.npy',
-'/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_row_idx.npy' :'//full/processed/paper__cites__paper/edge_index_row_idx.npy',
-'/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_csc_col_idx.npy' :'//full/processed/paper__cites__paper/edge_index_csc_col_idx.npy',
-'/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_csc_row_idx.npy' :'//full/processed/paper__cites__paper/edge_index_csc_row_idx.npy',
-'/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index.npy' :'//full/processed/paper__cites__paper/edge_index.npy'
+'//full/processed/paper/node_label_19.npy': '/mnt/nvme16/IGB260M_part_2/full/processed/paper/node_label_19_extended.npy',
+'//full/processed/paper/node_label_2K.npy': '/mnt/nvme16/IGB260M_part_2/full/processed/paper/node_label_2K_extended.npy',
+'//full/processed/paper/paper_id_index_mapping.npy': '/mnt/nvme16/IGB260M_part_2/processed/paper/paper_id_index_mapping.npy',
+'//full/processed/paper__cites__paper/edge_index.npy': '/mnt/nvme16/IGB260M_part_2/processed/paper__cites__paper/edge_index.npy',
+'//full/processed/paper/node_feat.npy': '/mnt/nvme17/node_feat.npy',
+'//full/processed/fos/fos_id_index_mapping.npy': '/mnt/nvme16/IGB260M_part_2/full/processed/fos/fos_id_index_mapping.npy',
+'//full/processed/fos/node_feat.npy': '/mnt/nvme16/IGB260M_part_2/full/processed/fos/node_feat.npy',
+'//full/processed/paper__topic__fos/edge_index.npy': '/mnt/nvme16/IGB260M_part_2/full/processed/paper__topic__fos/edge_index.npy',
+'//full/processed/paper/paper_id_index_mapping.npy': '/mnt/nvme16/IGB260M_part_2/full/processed/paper/paper_id_index_mapping.npy',
+'//full/processed/paper__cites__paper/edge_index_col_idx.npy': '/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_col_idx.npy',
+'//full/processed/paper__cites__paper/edge_index_csc_edge_idx.npy': '/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_csc_edge_idx.npy',
+'//full/processed/paper__cites__paper/edge_index_edge_idx.npy': '/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_edge_idx.npy',
+'//full/processed/paper__cites__paper/edge_index_row_idx.npy': '/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_row_idx.npy',
+'//full/processed/paper__cites__paper/edge_index_csc_col_idx.npy': '/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_csc_col_idx.npy',
+'//full/processed/paper__cites__paper/edge_index_csc_row_idx.npy': '/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index_csc_row_idx.npy',
+'//full/processed/paper__cites__paper/edge_index.npy': '/mnt/nvme16/IGB260M_part_2/full/processed/paper__cites__paper/edge_index.npy'
 }
 
 def get_bafs_path(*relative_path_args):
