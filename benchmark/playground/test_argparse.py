@@ -1,5 +1,5 @@
 import argparse
-from .utils import is_pwd_correct_for_benchmark
+from ..utils import is_pwd_correct_for_benchmark
 
 if __name__ == "__main__":
     assert is_pwd_correct_for_benchmark(), (

@@ -1,5 +1,5 @@
 import sys
-from . import utils
+from .. import utils
 import os
 sys.path.insert(1, os.path.join(utils.get_git_root_path()))
 import igb.utils
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     assert utils.is_pwd_correct_for_benchmark(), (
         "Please run this script at the repository root path."
         " The command will be something like python -m"
-        " benchmark.test_mmap_load"
+        " benchmark.playground.test_mmap_load"
     )
     print(test_cat_mmap())
     print(test_create_graph_from_mmap_load())
