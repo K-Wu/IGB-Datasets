@@ -84,8 +84,8 @@ def execute_remote(
             on the remote host.
     """
     # CHANGE: switch ssh execute to srun -w=<nodelist>
-    # Construct srun command that executes `cmd` on the select node
-    srun_cmd = "srun -w {node_id} {cmd}".format(
+    # Construct srun command that executes `cmd` on the select node as one process
+    srun_cmd = "srun -w {node_id} -ln1 {cmd}".format(
         node_id=get_ip_address_to_node_mapping()[ip],
         cmd=cmd,
     )
