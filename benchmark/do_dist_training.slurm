@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --ntasks-per-node=1
 #SBATCH --time=167:59:00
-#SBATCH -p a100
+#SBATCH -p a100rome
 #SBATCH --exclusive
 #SBATCH --ntasks-per-node=2
 #SBATCH --nodes=2
@@ -20,7 +20,7 @@ which python
 
 # Run your Python script
 # MY_TOOLKIT_PATH is set in sbatch_and_tail.sh and is /benchmark
-srun bash $MY_TOOLKIT_PATH/output_ip_list.sh
+srun --ntasks=2 --ntasks-per-node=1 bash $MY_TOOLKIT_PATH/output_ip_list.sh
 
 
 # If there is argument then pass it as --graph_name argument.
@@ -31,7 +31,7 @@ srun bash $MY_TOOLKIT_PATH/output_ip_list.sh
 if [ "$#" -eq 0 ]
 then
     # The dataset is by default igbh-full
-    python -m benchmark.slurm_launcher --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out "python -m benchmark.do_graphsage_node_classification --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --num_gpus=2 --part_config=$MY_TOOLKIT_PATH/../out_dataset/reddit/reddit.json --graph_name=reddit"
+    python -m benchmark.slurm_launcher --num_trainers=2 --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --workspace=$MY_TOOLKIT_PATH/../workspace --part_config=$MY_TOOLKIT_PATH/../out_dataset/reddit/reddit.json "python -m benchmark.do_graphsage_node_classification --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --num_gpus=2 --part_config=$MY_TOOLKIT_PATH/../out_dataset/reddit/reddit.json --graph_name=reddit"
 else
-    python -m benchmark.slurm_launcher --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out "python -m benchmark.do_graphsage_node_classification --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --num_gpus=2 --part_config=$MY_TOOLKIT_PATH/../out_dataset/$1/$1.json --graph_name=$1"
+    python -m benchmark.slurm_launcher --num_trainers=2 --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --workspace=$MY_TOOLKIT_PATH/../workspace --part_config=$MY_TOOLKIT_PATH/../out_dataset/$1/$1.json "python -m benchmark.do_graphsage_node_classification --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --num_gpus=2 --part_config=$MY_TOOLKIT_PATH/../out_dataset/$1/$1.json --graph_name=$1"
 fi
