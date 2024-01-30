@@ -32,7 +32,12 @@ BAFS_FILE_MAPPING = {
 }
 
 def get_bafs_path(*relative_path_args):
-    return BAFS_FILE_MAPPING['//' + osp.join(*relative_path_args)]
+    if '//' + osp.join(*relative_path_args) in BAFS_FILE_MAPPING:
+        return BAFS_FILE_MAPPING['//' + osp.join(*relative_path_args)]
+    else:
+        relative_path_args = list(relative_path_args)
+        relative_path_args = ['mnt', 'raid0'] + relative_path_args
+        return '/' + osp.join(*relative_path_args)
     
 
 

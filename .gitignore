@@ -3,4 +3,5 @@
 *.err
 *.out
 dataset/mag240m_kddcup2021
-out_dataset/
+out_*/
+.vscode/

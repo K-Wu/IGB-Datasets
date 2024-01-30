@@ -1,5 +1,4 @@
 from dgl.random import choice as random_choice
-from dgl.partition import partition_graph_with_halo
 from dgl.distributed.partition import _get_orig_ids, _get_inner_edge_mask, _get_inner_node_mask, _save_graphs, _dump_part_config
 import os
 from dgl.base import EID, ETYPE, NID, NTYPE
@@ -16,7 +15,7 @@ from dgl.distributed.graph_partition_book import (
     _etype_tuple_to_str,
 )
 
-"""This is a memory-efficient version of github dmlc/dgl/python/dgl/distributed/partition.py. We do not convert the input graph to a homogeneous graph."""
+"""This is a memory-efficient version of partition_graph() at github/dmlc/dgl/python/dgl/distributed/partition.py. We do not convert the input graph to a homogeneous graph."""
 def my_random_partition_graph(g, 
     graph_name,
     num_parts,
@@ -26,8 +25,9 @@ def my_random_partition_graph(g,
     sim_g = g
     node_parts = random_choice(num_parts, sim_g.num_nodes())
     print("random_choice done", flush=True)
-    sim_g.ndata["orig_id"] = F.arange(0, sim_g.num_nodes())
-    sim_g.edata["orig_id"] = F.arange(0, sim_g.num_edges())
+    if return_mapping:
+        sim_g.ndata["orig_id"] = F.arange(0, sim_g.num_nodes())
+        sim_g.edata["orig_id"] = F.arange(0, sim_g.num_edges())
     parts, orig_nids, orig_eids = partition_graph_with_halo(
         sim_g, node_parts, num_hops, reshuffle=False
     )
@@ -120,7 +120,10 @@ def my_random_partition_graph(g,
                 ntype_id = g.get_ntype_id(ntype)
                 # To get the edges in the input graph, we should use original node IDs.
                 # Both orig_id and NID stores the per-node-type IDs.
-                ndata_name = "orig_id"
+                if return_mapping:
+                    ndata_name = "orig_id"
+                else:
+                    ndata_name = NID
                 inner_node_mask = _get_inner_node_mask(part, ntype_id)
                 # This is global node IDs.
                 local_nodes = F.boolean_mask(
@@ -155,7 +158,10 @@ def my_random_partition_graph(g,
 
             for etype in g.canonical_etypes:
                 etype_id = g.get_etype_id(etype)
-                edata_name = "orig_id"
+                if return_mapping:
+                    edata_name = "orig_id"
+                else:
+                    edata_name = EID
                 inner_edge_mask = _get_inner_edge_mask(part, etype_id)
                 # This is global edge IDs.
                 local_edges = F.boolean_mask(
@@ -190,9 +196,11 @@ def my_random_partition_graph(g,
 
         else:
             raise NotImplementedError("num_parts == 1 is not supported yet")
-        # delete `orig_id` from ndata/edata
-        del part.ndata["orig_id"]
-        del part.edata["orig_id"]
+
+        if return_mapping:
+            # delete `orig_id` from ndata/edata
+            del part.ndata["orig_id"]
+            del part.edata["orig_id"]
 
         part_dir = os.path.join(out_path, "part" + str(part_id))
         node_feat_file = os.path.join(part_dir, "node_feat.dgl")

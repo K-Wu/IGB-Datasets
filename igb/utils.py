@@ -36,7 +36,7 @@ def cat_mmap_arrays(arrays, out=None, mode="r"):
 
 def construct_homogeneous(
     G_all_edges:dict[tuple[str,str,str],tuple[Any, Any]],G_canonical_etypes,
-    G_ntypes, G_ntype_to_num_nodes: dict[str, int],store_type=True, return_count=False,G_idtype=F.int32,G_device="cpu"
+    G_ntypes, G_ntype_to_num_nodes: dict[str, int],store_type=True, return_count=False,G_idtype=F.int64,G_device="cpu"
     
 ):
     """A simplified version based on to_homogeneous in dmlc/dgl/python/dgl/convert.py.

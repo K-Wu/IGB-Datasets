@@ -131,6 +131,11 @@ if __name__ == "__main__":
         help="turn the graph into an undirected graph.",
     )
     argparser.add_argument(
+        "--memory_efficient_impl",
+        action="store_true",
+        help="Use a slightly more memory-efficient implementation to avoid oom.",
+    )
+    argparser.add_argument(
         "--balance_edges",
         action="store_true",
         help="balance the number of edges in each partition.",
@@ -197,5 +202,9 @@ if __name__ == "__main__":
     #     num_trainers_per_machine=args.num_trainers_per_machine,
     # )
 
-    from .my_partition_graph import my_random_partition_graph
-    my_random_partition_graph(g, args.dataset, args.num_parts, "out_data")
+    if args.memory_efficient_impl:
+        from .my_partition_graph import my_random_partition_graph
+        my_random_partition_graph(g, args.dataset, args.num_parts, "out_data")
+    else:
+        from dgl.distributed.partition import partition_graph
+        partition_graph(g, args.dataset, args.num_parts, "out_data_dgl_method", part_method = "random")

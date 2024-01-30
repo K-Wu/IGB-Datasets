@@ -4,6 +4,8 @@
   <img width='60%' src='https://github.com/IllinoisGraphBenchmark/IGB260M-Datasets/blob/main/doc/figures/logo.png' />
 </p>
 
+## Hack
+If the memory is not big enough, one thing you can try, if the int32 won't overflow, is to change the G_idtype from F.int64 to F.int32 in construct_homogeneous in /data/kunwu2/IGB-Datasets/igb/utils.py.
 
 ## Official IGB Leadboard is now online!! 🎉
 Head over to the [leaderboard](https://github.com/IllinoisGraphBenchmark/IGB-Datasets/blob/leaderboard-creation/results/README.md#leaderboard-wip) and make your submission. 
