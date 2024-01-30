@@ -10,6 +10,8 @@
 #SBATCH --output=my_output.%j.out
 #SBATCH --error=my_output.%j.err
 
+python $MY_TOOLKIT_PATH/playground/print_env.py
+
 python $MY_TOOLKIT_PATH/playground/wait_10.py &
 python $MY_TOOLKIT_PATH/playground/wait_10.py &
 
