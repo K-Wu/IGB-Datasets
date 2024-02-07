@@ -15,12 +15,12 @@ hostname=$(hostname)
 # Get the IP address of the node.
 # This gets the first STREAM ip address
 # From https://www.linuxtutorials.org/resolve-hostname-to-ip-address-linux/
-ip=$(getent ahostsv4 $hostname | grep STREAM | head -n 1  | awk '{ print $1 }')
+thisip=$(getent ahostsv4 $hostname-ib0 | grep STREAM | head -n 1  | awk '{ print $1 }')
 ips=()
 # Get the IP address of each node in node_lists
 for node in ${node_lists[@]}
 do
-    ips+=($(getent ahostsv4 $node | grep STREAM | head -n 1  | awk '{ print $1 }'))
+    ips+=($(getent ahostsv4 $node-ib0 | grep STREAM | head -n 1  | awk '{ print $1 }'))
 done
 
 # Store ips into  /tmp/node_lists.%j.out
@@ -29,7 +29,13 @@ do
     echo $ip >> /tmp/node_lists.$SLURM_JOB_ID.out
 done
 
-echo "hostname $(hostname) The IP address of the node is $ip."
+# Store node names into /tmp/node_name_lists.%j.out
+for node in ${node_lists[@]}
+do
+    echo $node >> /tmp/node_name_lists.$SLURM_JOB_ID.out
+done
+
+echo "hostname $(hostname) The IP address of this node is $thisip."
 echo "ips ${ips[@]}"
 
 echo "Content in /tmp/node_lists.$SLURM_JOB_ID.out"

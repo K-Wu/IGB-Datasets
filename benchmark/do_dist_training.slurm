@@ -3,7 +3,7 @@
 #SBATCH --time=167:59:00
 #SBATCH -p a100rome
 #SBATCH --exclusive
-#SBATCH --ntasks-per-node=2
+#SBATCH --ntasks-per-node=5
 #SBATCH --nodes=2
 #SBATCH --mem=0
 #SBATCH --job-name=partition_graph
@@ -11,7 +11,7 @@
 #SBATCH --error=my_output.%j.err
 
 # Load any necessary modules (e.g., Anaconda)
-
+export PYTHONPATH=$PYTHONPATH:$MY_TOOLKIT_PATH/../
 
 # Activate your Python environment (if needed)
 eval "$(conda shell.bash hook)"
@@ -31,7 +31,7 @@ srun --ntasks=2 --ntasks-per-node=1 bash $MY_TOOLKIT_PATH/output_ip_list.sh
 if [ "$#" -eq 0 ]
 then
     # The dataset is by default igbh-full
-    python -m benchmark.slurm_launcher --num_trainers=2 --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --workspace=$MY_TOOLKIT_PATH/../workspace --part_config=$MY_TOOLKIT_PATH/../out_dataset/reddit/reddit.json "python -m benchmark.do_graphsage_node_classification --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --num_gpus=2 --part_config=$MY_TOOLKIT_PATH/../out_dataset/reddit/reddit.json --graph_name=reddit"
+    python -m benchmark.slurm_launcher --num_trainers=2 --num_samplers=0 --num_servers=1 --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --nodename_config=/tmp/node_name_lists.$SLURM_JOB_ID.out --workspace=$MY_TOOLKIT_PATH/../workspace --part_config=$MY_TOOLKIT_PATH/../out_dataset/reddit/reddit.json "python -m benchmark.do_graphsage_node_classification --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --num_gpus=2 --part_config=$MY_TOOLKIT_PATH/../out_dataset/reddit/reddit.json --graph_name=reddit"
 else
-    python -m benchmark.slurm_launcher --num_trainers=2 --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --workspace=$MY_TOOLKIT_PATH/../workspace --part_config=$MY_TOOLKIT_PATH/../out_dataset/$1/$1.json "python -m benchmark.do_graphsage_node_classification --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --num_gpus=2 --part_config=$MY_TOOLKIT_PATH/../out_dataset/$1/$1.json --graph_name=$1"
+    python -m benchmark.slurm_launcher --num_trainers=2 --num_samplers=0 --num_servers=1 --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --nodename_config=/tmp/node_name_lists.$SLURM_JOB_ID.out --workspace=$MY_TOOLKIT_PATH/../workspace --part_config=$MY_TOOLKIT_PATH/../out_dataset/$1/$1.json "python -m benchmark.do_graphsage_node_classification --ip_config=/tmp/node_lists.$SLURM_JOB_ID.out --num_gpus=2 --part_config=$MY_TOOLKIT_PATH/../out_dataset/$1/$1.json --graph_name=$1"
 fi
