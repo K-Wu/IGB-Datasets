@@ -1,7 +1,7 @@
 # From https://discuss.dgl.ai/t/two-node-job-failure-during-network-configurations/4231/4?u=k-wu
 import socket
 
-def start_dummy_server(host='127.0.0.1', port=12345):
+def start_dummy_server(host='127.0.0.1', port=30050):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((host, port))
         s.listen()

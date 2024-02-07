@@ -18,6 +18,6 @@ thisip=$(getent ahostsv4 $hostname | grep STREAM | head -n 1  | awk '{ print $1 
 echo "thisip: $thisip"
 
 echo $MY_TOOLKIT_PATH
-srun -ln1 --mem-per-cpu 1000MB python $MY_TOOLKIT_PATH/playground/dummy_server.py 127.0.0.1 &
+srun -ln1 --overlap python $MY_TOOLKIT_PATH/playground/dummy_server.py 127.0.0.1 &
 sleep 5
-srun -ln1 --mem-per-cpu 1000MB python $MY_TOOLKIT_PATH/playground/dummy_client.py 127.0.0.1
+srun -ln1 --overlap python $MY_TOOLKIT_PATH/playground/dummy_client.py 127.0.0.1

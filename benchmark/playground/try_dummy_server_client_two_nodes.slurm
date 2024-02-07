@@ -13,7 +13,7 @@
 
 hostname=$(hostname)
 # Replace $hostname with $hostname-ib0 to get ib0 address in the following line
-thisip=$(getent ahostsv4 $hostname | grep STREAM | head -n 1  | awk '{ print $1 }')
+thisip=$(getent ahostsv4 $hostname-ib0 | grep STREAM | head -n 1  | awk '{ print $1 }')
 
 echo "thisip: $thisip"
 
@@ -21,3 +21,4 @@ echo $MY_TOOLKIT_PATH
 srun -l -N1 -n1 python $MY_TOOLKIT_PATH/playground/dummy_server.py $thisip &
 sleep 5
 srun -l -N1 -n1 python $MY_TOOLKIT_PATH/playground/dummy_client.py $thisip
+
