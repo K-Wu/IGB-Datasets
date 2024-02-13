@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --time=167:59:00
-#SBATCH -p rome
+#SBATCH -p interlagos
 #SBATCH --exclusive
 #SBATCH --ntasks=1
 #SBATCH --mem=0
@@ -24,7 +24,7 @@ which python
 if [ "$#" -eq 0 ]
 then
     # The dataset is by default igbh-full
-    python -m benchmark.do_partition_graph
+    catchsegv python -m benchmark.do_partition_graph --memory_efficient_impl
 else
-    python -m benchmark.do_partition_graph --dataset=$1
+    catchsegv python -m benchmark.do_partition_graph --memory_efficient_impl --dataset=$1
 fi

@@ -1,7 +1,7 @@
-# Launcher for use in slurm script (ssh. The change is that the original script uses ip address when doing ssh, now we use the node hostname.):
+# Launcher for use in slurm script (srun)
 # From https://github.com/dmlc/dgl/blob/e181ef15d7df465af713472ddcc8fba9b233f708/tools/launch.py
 # Usage: https://docs.dgl.ai/tutorials/dist/1_node_classification.html#launch-the-distributed-training-job
-"""Launching tool for DGL distributed training"""
+"""Launching tool for use in slurm script for DGL distributed training"""
 import argparse
 import json
 import logging
@@ -13,12 +13,28 @@ import signal
 import subprocess
 import sys
 import time
-from functools import partial
+# from functools import partial
 from threading import Thread
-from typing import Optional
+from typing import Optional, List, Dict
 
 
-def cleanup_proc(get_all_remote_pids, conn):
+def get_ip_address_to_node_mapping() -> Dict[str, str]:
+    # Get node lists via scontrol show hostnames $SLURM_JOB_NODELIST
+    node_lists = subprocess.check_output(
+        f"scontrol show hostnames {os.environ['SLURM_JOB_NODELIST']}",
+        shell=True,
+        stderr=subprocess.STDOUT,
+    ).decode("utf-8")
+    node_lists = node_lists.split("\n")
+    results = {}
+    for node in node_lists:
+        ip = subprocess.check_output("getent ahostsv4 "+ node+ "-ib0 | grep STREAM | head -n 1  | awk '{ print $1 }'", shell=True, stderr=subprocess.STDOUT).decode("utf-8").strip()
+        results[ip] = node
+    return results
+
+
+
+def cleanup_proc(get_all_remaining_steps, conn):
     """This process tries to clean up the remote training tasks."""
     print("cleanup process runs")
     # This process should not handle SIGINT.
@@ -29,79 +45,29 @@ def cleanup_proc(get_all_remote_pids, conn):
     if data == "exit":
         sys.exit(0)
     else:
-        remote_pids = get_all_remote_pids()
+        # CHANGE: get step ids instead get_all_remote_pids -> get_all_remaining_steps
+        remaining_steps = get_all_remaining_steps()
         # Otherwise, we need to ssh to each machine and kill the training jobs.
-        for (ip, port), pids in remote_pids.items():
-            kill_process(ip, port, pids)
+        for step in remaining_steps:
+            # CHANGE: kill_process -> kill_step
+            kill_step(step)
     print("cleanup process exits")
 
+def kill_step(step_id):
+    """kill the specified step via scancel"""
+    job_id = os.environ.get("SLURM_JOB_ID")
+    cmd = "scancel --signal=KILL {}.{}".format(job_id, step_id)
+    try:
+        subprocess.run(cmd, shell=True)
+    except Exception as e:
+        print("Error when killing step {}: {}".format(step_id, e))
 
-def kill_process(ip, port, pids):
-    """ssh to a remote machine and kill the specified processes."""
-    curr_pid = os.getpid()
-    killed_pids = []
-    # If we kill child processes first, the parent process may create more again. This happens
-    # to Python's process pool. After sorting, we always kill parent processes first.
-    pids.sort()
-    for pid in pids:
-        assert curr_pid != pid
-        print("kill process {} on {}:{}".format(pid, ip, port), flush=True)
-        kill_cmd = (
-            "ssh -o StrictHostKeyChecking=no -p "
-            + str(port)
-            + " "
-            + ip
-            + " 'kill {}'".format(pid)
-        )
-        subprocess.run(kill_cmd, shell=True)
-        killed_pids.append(pid)
-    # It's possible that some of the processes are not killed. Let's try again.
-    for i in range(3):
-        killed_pids = get_killed_pids(ip, port, killed_pids)
-        if len(killed_pids) == 0:
-            break
-        else:
-            killed_pids.sort()
-            for pid in killed_pids:
-                print(
-                    "kill process {} on {}:{}".format(pid, ip, port), flush=True
-                )
-                kill_cmd = (
-                    "ssh -o StrictHostKeyChecking=no -p "
-                    + str(port)
-                    + " "
-                    + ip
-                    + " 'kill -9 {}'".format(pid)
-                )
-                subprocess.run(kill_cmd, shell=True)
-
-
-def get_killed_pids(ip, port, killed_pids):
-    """Get the process IDs that we want to kill but are still alive."""
-    killed_pids = [str(pid) for pid in killed_pids]
-    killed_pids = ",".join(killed_pids)
-    ps_cmd = (
-        "ssh -o StrictHostKeyChecking=no -p "
-        + str(port)
-        + " "
-        + ip
-        + " 'ps -p {} -h'".format(killed_pids)
-    )
-    res = subprocess.run(ps_cmd, shell=True, stdout=subprocess.PIPE)
-    pids = []
-    for p in res.stdout.decode("utf-8").split("\n"):
-        l = p.split()
-        if len(l) > 0:
-            pids.append(int(l[0]))
-    return pids
 
 
 def execute_remote(
     cmd: str,
     state_q: queue.Queue,
     ip: str,
-    port: int,
-    username: Optional[str] = "",
 ) -> Thread:
     """Execute command line on remote machine via ssh.
 
@@ -109,7 +75,6 @@ def execute_remote(
         cmd: User-defined command (udf) to execute on the remote host.
         state_q: A queue collecting Thread exit states.
         ip: The ip-address of the host to run the command on.
-        port: Port number that the host is listening on.
         thread_list:
         username: Optional. If given, this will specify a username to use when issuing commands over SSH.
             Useful when your infra requires you to explicitly specify a username to avoid permission issues.
@@ -118,22 +83,17 @@ def execute_remote(
         thread: The Thread whose run() is to run the `cmd` on the remote host. Returns when the cmd completes
             on the remote host.
     """
-    ip_prefix = ""
-    if username:
-        ip_prefix += "{username}@".format(username=username)
-
-    # Construct ssh command that executes `cmd` on the remote host
-    ssh_cmd = "ssh -o StrictHostKeyChecking=no -p {port} {ip_prefix}{ip} '{cmd}'".format(
-        port=str(port),
-        ip_prefix=ip_prefix,
-        ip=ip,
+    # CHANGE: switch ssh execute to srun -w=<nodelist>
+    # Construct srun command that executes `cmd` on the select node as one process
+    srun_cmd = "srun -w {node_id} -ln1 --overlap {cmd}".format(
+        node_id=get_ip_address_to_node_mapping()[ip],
         cmd=cmd,
     )
 
     # thread func to run the job
-    def run(ssh_cmd, state_q):
+    def run(srun_cmd, state_q):
         try:
-            subprocess.check_call(ssh_cmd, shell=True)
+            subprocess.check_call(srun_cmd, shell=True)
             state_q.put(0)
         except subprocess.CalledProcessError as err:
             print(f"Called process error {err}")
@@ -144,7 +104,7 @@ def execute_remote(
     thread = Thread(
         target=run,
         args=(
-            ssh_cmd,
+            srun_cmd,
             state_q,
         ),
     )
@@ -155,59 +115,21 @@ def execute_remote(
     return thread
 
 
-def get_remote_pids(ip, port, cmd_regex):
-    """Get the process IDs that run the command in the remote machine."""
-    pids = []
-    curr_pid = os.getpid()
-    # Here we want to get the python processes. We may get some ssh processes, so we should filter them out.
-    ps_cmd = (
-        "ssh -o StrictHostKeyChecking=no -p "
-        + str(port)
-        + " "
-        + ip
-        + " 'ps -aux | grep python | grep -v StrictHostKeyChecking'"
-    )
-    res = subprocess.run(ps_cmd, shell=True, stdout=subprocess.PIPE)
-    for p in res.stdout.decode("utf-8").split("\n"):
-        l = p.split()
-        if len(l) < 2:
-            continue
-        # We only get the processes that run the specified command.
-        res = re.search(cmd_regex, p)
-        if res is not None and int(l[1]) != curr_pid:
-            pids.append(l[1])
-
-    pid_str = ",".join([str(pid) for pid in pids])
-    ps_cmd = (
-        "ssh -o StrictHostKeyChecking=no -p "
-        + str(port)
-        + " "
-        + ip
-        + " 'pgrep -P {}'".format(pid_str)
-    )
-    res = subprocess.run(ps_cmd, shell=True, stdout=subprocess.PIPE)
-    pids1 = res.stdout.decode("utf-8").split("\n")
-    all_pids = []
-    for pid in set(pids + pids1):
-        if pid == "" or int(pid) == curr_pid:
-            continue
-        all_pids.append(int(pid))
-    all_pids.sort()
-    return all_pids
-
-
-def get_all_remote_pids(hosts, ssh_port, udf_command):
-    """Get all remote processes."""
-    remote_pids = {}
-    for node_id, host in enumerate(hosts):
-        ip, _, nodename = host
-        # When creating training processes in remote machines, we may insert some arguments
-        # in the commands. We need to use regular expressions to match the modified command.
-        cmds = udf_command.split()
-        new_udf_command = " .*".join(cmds)
-        pids = get_remote_pids(ip, ssh_port, new_udf_command)
-        remote_pids[(ip, ssh_port)] = pids
-    return remote_pids
+def get_all_remaining_steps() -> List[int]:
+    """Get the still-running srun steps."""
+    # List all active jobs via sacct -j40313 --format=JobID,Start,End,Elapsed,NCPUS
+    # All active jobs are 1) with JobID in the form of 40313.<step_id> and 2) with End=Unknown
+    sacct_output = subprocess.check_output(
+        "sacct --format=JobID,Start,End,Elapsed,NCPUS",
+        shell=True,
+        stderr=subprocess.STDOUT,
+    ).decode("utf-8")
+    results = []
+    for line in sacct_output.split("\n"):
+        jobid, start, end, elapsed, ncpus = line.strip().split()
+        if jobid.startswith(os.environ["SLURM_JOB_ID"] + ".") and end.lower() == "unknown":
+            results.append(jobid.split(".")[1])
+    return results
 
 
 def construct_torch_dist_launcher_cmd(
@@ -512,31 +434,26 @@ def submit_jobs(args, udf_command, dry_run=False):
         )
     servers_cmd = []
     clients_cmd = []
-    hosts = []
+    hosts = [] # TODO: change this to node id
     thread_list = []
     server_count_per_machine = 0
 
     # Get the IP addresses of the cluster.
     ip_config = os.path.join(args.workspace, args.ip_config)
-    nodename_config = os.path.join(args.workspace, args.nodename_config)
     with open(ip_config) as f:
-        with open(nodename_config) as f2:
-            f2_lines = f2.readlines()
-            for idx_line, line in enumerate(f):
-                result = line.strip().split()
-                if len(result) == 2:
-                    ip = result[0]
-                    port = int(result[1])
-                    nodename = f2_lines[idx_line].strip()
-                    hosts.append((ip, port, nodename))
-                elif len(result) == 1:
-                    ip = result[0]
-                    port = get_available_port(ip)
-                    nodename = f2_lines[idx_line].strip()
-                    hosts.append((ip, port, nodename))
-                else:
-                    raise RuntimeError("Format error of ip_config.")
-                server_count_per_machine = args.num_servers
+        for line in f:
+            result = line.strip().split()
+            if len(result) == 2:
+                ip = result[0]
+                port = int(result[1])
+                hosts.append((ip, port))
+            elif len(result) == 1:
+                ip = result[0]
+                port = get_available_port(ip)
+                hosts.append((ip, port))
+            else:
+                raise RuntimeError("Format error of ip_config.")
+            server_count_per_machine = args.num_servers
     # Get partition info of the graph data
     part_config = os.path.join(args.workspace, args.part_config)
     with open(part_config) as conf_f:
@@ -561,7 +478,7 @@ def submit_jobs(args, udf_command, dry_run=False):
         pythonpath=os.environ.get("PYTHONPATH", ""),
     )
     for i in range(len(hosts) * server_count_per_machine):
-        ip, _, nodename = hosts[int(i / server_count_per_machine)]
+        ip, _ = hosts[int(i / server_count_per_machine)]
         server_env_vars_cur = f"{server_env_vars} DGL_SERVER_ID={i}"
         cmd = wrap_cmd_with_local_envvars(udf_command, server_env_vars_cur)
         cmd = (
@@ -576,9 +493,7 @@ def submit_jobs(args, udf_command, dry_run=False):
                 execute_remote(
                     cmd,
                     state_q,
-                    nodename,
-                    args.ssh_port,
-                    username=args.ssh_username,
+                    ip,
                 )
             )
 
@@ -600,7 +515,7 @@ def submit_jobs(args, udf_command, dry_run=False):
     master_addr = hosts[0][0]
     master_port = get_available_port(master_addr)
     for node_id, host in enumerate(hosts):
-        ip, _,nodename = host
+        ip, _ = host
         # Transform udf_command to follow torch's dist launcher format: `PYTHON_BIN -m torch.distributed.run ... UDF`
         torch_dist_udf_command = wrap_udf_in_torch_dist_launcher(
             udf_command=udf_command,
@@ -623,7 +538,7 @@ def submit_jobs(args, udf_command, dry_run=False):
         if not dry_run:
             thread_list.append(
                 execute_remote(
-                    cmd, state_q, nodename, args.ssh_port, username=args.ssh_username
+                    cmd, state_q, ip
                 )
             )
 
@@ -633,8 +548,8 @@ def submit_jobs(args, udf_command, dry_run=False):
 
     # Start a cleanup process dedicated for cleaning up remote training jobs.
     conn1, conn2 = multiprocessing.Pipe()
-    func = partial(get_all_remote_pids, hosts, args.ssh_port, udf_command)
-    process = multiprocessing.Process(target=cleanup_proc, args=(func, conn1))
+    #func = partial(get_all_remote_pids, hosts, udf_command)
+    process = multiprocessing.Process(target=cleanup_proc, args=(get_all_remaining_steps, conn1))
     process.start()
 
     def signal_handler(signal, frame):
@@ -664,14 +579,6 @@ def submit_jobs(args, udf_command, dry_run=False):
 
 def main():
     parser = argparse.ArgumentParser(description="Launch a distributed job")
-    parser.add_argument("--ssh_port", type=int, default=22, help="SSH Port.")
-    parser.add_argument(
-        "--ssh_username",
-        default="",
-        help="Optional. When issuing commands (via ssh) to cluster, use the provided username in the ssh cmd. "
-        "Example: If you provide --ssh_username=bob, then the ssh command will be like: 'ssh bob@1.2.3.4 CMD' "
-        "instead of 'ssh 1.2.3.4 CMD'",
-    )
     parser.add_argument(
         "--workspace",
         type=str,
@@ -709,11 +616,6 @@ def main():
         "--ip_config",
         type=str,
         help="The file (in workspace) of IP configuration for server processes",
-    )
-    parser.add_argument(
-        "--nodename_config",
-        type=str,
-        help="The file (in workspace) of Node name configuration for server processes",
     )
     parser.add_argument(
         "--num_server_threads",
@@ -763,9 +665,6 @@ def main():
     assert (
         args.ip_config is not None
     ), "A user has to specify an IP configuration file with --ip_config."
-    assert (
-        args.nodename_config is not None
-    ), "A user has to specify a Node name configuration file with --nodename_config."
     if args.num_omp_threads is None:
         # Here we assume all machines have the same number of CPU cores as the machine
         # where the launch script runs.
