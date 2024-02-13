@@ -349,6 +349,10 @@ def main(args):
     g = dgl.distributed.DistGraph(args.graph_name, part_config=args.part_config)
     print(f"Rank of {host_name}: {g.rank()}")
 
+    if args.regenerate_node_features:
+        print(f"{host_name}: Regenerating node features.")
+        g.ndata["features"] = th.randn(g.num_nodes(), 1024)
+
     # Split train/val/test IDs for each trainer.
     pb = g.get_partition_book()
     if "trainer_id" in g.ndata:
@@ -458,6 +462,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Pad train nid to the same length across machine, to ensure num "
         "of batches to be the same.",
+    )
+    parser.add_argument(
+        "--regenerate_node_features",
+        default=True,
+        action="store_true",
+        help="Regenerate node features.",
     )
     args = parser.parse_args()
     print(f"Arguments: {args}")
