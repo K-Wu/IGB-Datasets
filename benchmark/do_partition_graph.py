@@ -132,7 +132,7 @@ if __name__ == "__main__":
         help="datasets: igbh600m, igbhlarge, reddit, ogbn-products, ogbn-papers100M",
     )
     argparser.add_argument(
-        "--num_parts", type=int, default=8, help="number of partitions"
+        "--num_parts", type=int, default=2, help="number of partitions (i.e. compute nodes in training)"
     )
     argparser.add_argument(
         "--part_method", type=str, default="random", help="the partition method: random, metis"
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--num_trainers_per_machine",
         type=int,
-        default=1,
+        default=2,
         help="the number of trainers per machine. The trainer ids are stored\
                                 in the node feature 'trainer_id'",
     )
