@@ -28,8 +28,11 @@ def my_random_partition_graph(g,
     if return_mapping:
         sim_g.ndata["orig_id"] = F.arange(0, sim_g.num_nodes())
         sim_g.edata["orig_id"] = F.arange(0, sim_g.num_edges())
+    # KWU: Convert sim_g[ETYPE] to int64
+    sim_g.edata[ETYPE] = F.astype(sim_g.edata[ETYPE], F.int64)
+    # KWU: Reshuffle is a must because when the dist trainer loaded the graph, it assmes the indices in each parts are contiguous as a result of reshuffling
     parts, orig_nids, orig_eids = partition_graph_with_halo(
-        sim_g, node_parts, num_hops, reshuffle=False
+        sim_g, node_parts, num_hops, reshuffle=True
     )
     print("partition_graph_with_halo done", flush=True)
     # Node mapping is in halo_subg.induced_vertices
@@ -120,10 +123,8 @@ def my_random_partition_graph(g,
                 ntype_id = g.get_ntype_id(ntype)
                 # To get the edges in the input graph, we should use original node IDs.
                 # Both orig_id and NID stores the per-node-type IDs.
-                if return_mapping:
-                    ndata_name = "orig_id"
-                else:
-                    ndata_name = NID
+                # KWU: If reshuffling is not done, use instead ndata_name = NID. However, later loading will trigger error because the indices in each part is no longer contiguous.
+                ndata_name = "orig_id"
                 inner_node_mask = _get_inner_node_mask(part, ntype_id)
                 # This is global node IDs.
                 local_nodes = F.boolean_mask(
@@ -158,10 +159,8 @@ def my_random_partition_graph(g,
 
             for etype in g.canonical_etypes:
                 etype_id = g.get_etype_id(etype)
-                if return_mapping:
-                    edata_name = "orig_id"
-                else:
-                    edata_name = EID
+                # KWU: If reshuffling is not done, use instead edata_name = EID. However, later loading will trigger error because the indices in each part is no longer contiguous.
+                edata_name = "orig_id"
                 inner_edge_mask = _get_inner_edge_mask(part, etype_id)
                 # This is global edge IDs.
                 local_edges = F.boolean_mask(
