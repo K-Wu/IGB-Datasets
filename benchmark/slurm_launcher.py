@@ -419,6 +419,7 @@ def construct_dgl_client_env_vars(
         "DGL_NUM_SAMPLER={DGL_NUM_SAMPLER} "
         "DGL_NUM_CLIENT={DGL_NUM_CLIENT} "
         "DGL_CONF_PATH={DGL_CONF_PATH} "
+        "DGL_DIST_MAX_TRY_TIMES=1048576 " # Set the maximum number of retries for the client to connect to the server
         "DGL_IP_CONFIG={DGL_IP_CONFIG} "
         "DGL_NUM_SERVER={DGL_NUM_SERVER} "
         "DGL_GRAPH_FORMAT={DGL_GRAPH_FORMAT} "

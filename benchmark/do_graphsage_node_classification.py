@@ -341,16 +341,18 @@ def main(args):
     Main function.
     """
     host_name = socket.gethostname()
-    print(f"{host_name}: Initializing DistDGL.")
+    print(f"{host_name}: Initializing DistDGL.", flush=True)
     dgl.distributed.initialize(args.ip_config)
-    print(f"{host_name}: Initializing PyTorch process group.")
+    print(f"{host_name}: Initializing PyTorch process group.", flush=True)
     th.distributed.init_process_group(backend=args.backend)
-    print(f"{host_name}: Initializing DistGraph.")
+    print(f"{host_name}: Initializing DistGraph.", flush=True)
+    # e.g., g = dgl.distributed.DistGraph("igbh",part_config="./out_data_2_2/igbh600m.json")
     g = dgl.distributed.DistGraph(args.graph_name, part_config=args.part_config)
-    print(f"Rank of {host_name}: {g.rank()}")
+    print(f"Rank of {host_name}: {g.rank()}", flush=True)
 
     if args.regenerate_node_features:
-        print(f"{host_name}: Regenerating node features.")
+        print(f"{host_name}: Regenerating node features.", flush=True)
+        print(f"{host_name}: num_nodes ", g.num_nodes(), flush=True)
         g.ndata["features"] = th.randn(g.num_nodes(), 1024)
 
     # Split train/val/test IDs for each trainer.
