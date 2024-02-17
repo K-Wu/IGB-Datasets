@@ -631,6 +631,7 @@ class IGBHeteroDGLDatasetMassive(DGLDataset):
 
         if self.args.load_homo_graph:
             from .utils import construct_homogeneous
+            # TODO: This part is faulty! It did not contain necessary nodes data and edges data, involving feat, label, etc.
             # Sorted the key according to dictionary order, i.e., the order in graph.canonical_etypes
             graph_data = {
                 ('author', 'affiliated_to', 'institute'): (affiliation_author_edges[:, 0], affiliation_author_edges[:, 1]),

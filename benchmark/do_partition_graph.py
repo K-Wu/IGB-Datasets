@@ -6,11 +6,12 @@ import dgl
 import torch as th
 
 from dgl.convert import to_homogeneous
-from .utils import get_igbh_config, get_igb_config, is_pwd_correct_for_benchmark
+from .utils import get_igbh_config, get_igb_config, is_pwd_correct_for_benchmark, construct_graph_attributes
 from igb.dataloader import IGBHeteroDGLDatasetMassive, IGB260MDGLDataset
 
 def _load_igbh(dataset_size: str):
     args = get_igbh_config()
+    args.load_homo_graph = False
     if dataset_size=="large":
         args.dataset_size="large"
     elif dataset_size=="full":
@@ -148,6 +149,11 @@ if __name__ == "__main__":
         help="turn the graph into an undirected graph.",
     )
     argparser.add_argument(
+        "--homogeneous",
+        action="store_true",
+        help="convert the graph to a homogeneous graph.",
+    )
+    argparser.add_argument(
         "--memory_efficient_impl",
         action="store_true",
         help="Use a slightly more memory-efficient implementation to avoid oom.",
@@ -210,6 +216,7 @@ if __name__ == "__main__":
             sym_g.ndata[key] = g.ndata[key]
         g = sym_g
     print("Converted to (or skipped the conversion of) undirected graph", flush=True)
+
     # dgl.distributed.partition_graph(
     #     g,
     #     args.dataset,
@@ -222,8 +229,13 @@ if __name__ == "__main__":
     # )
 
     if args.memory_efficient_impl:
+        # g_attrs needs to be passed to partition_graph. It should be from the original heterogeneous graph before conversion to homogeneous graph.
+        g_attrs = construct_graph_attributes(g) 
+        if args.homogeneous:
+        g = dgl.to_homogeneous(g, readonly=True)
+        print("Converted to homogeneous graph", flush=True)
         from .my_partition_graph import my_random_partition_graph
-        my_random_partition_graph(g, args.dataset, args.num_parts, "out_data")
+        my_random_partition_graph(g, g_attrs, args.dataset, args.num_parts, "out_data")
     else:
         from dgl.distributed.partition import partition_graph
         partition_graph(g, args.dataset, args.num_parts, "out_data_dgl_method", part_method = "random")

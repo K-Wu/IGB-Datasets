@@ -2,6 +2,35 @@ import sys
 import os
 import argparse
 import subprocess
+from typing import Any
+from dgl import DGLHeteroGraph
+
+def construct_graph_attributes(g_hetero: DGLHeteroGraph) -> dict[str, Any]:
+    g_attrs: dict[str, Any] = {}
+    g_attrs["is_homogeneous"] = g_hetero.is_homogeneous # (property)
+    g_attrs["ntypes"] = g_hetero.ntypes # (iterable)
+    g_attrs["canonical_etypes"] = g_hetero.canonical_etypes # (iterable)
+    g_attrs["etypes"] = g_hetero.etypes # (iterable)
+
+    g_attrs["get_ntype_id"] = {} # (dict. Keys are ntype from g.ntypes)
+    g_attrs["get_etype_id"] = {} # (dict. Keys are etype from g.canonial_etypes)
+    g_attrs["num_nodes"] = {} # (dict. Keys are ntype from g.ntypes, and total (""))
+    g_attrs["num_edges"] = {} # (dict. Keys are etype from g.canonial_etypes, and total (""))
+    g_attrs["nodes_data"] = {} # (dict. Keys are ntype from g.ntypes, and total (""))
+    g_attrs["edges_data"] = {} # (dict. Keys are etype from g.canonial_etypes, and total (""))
+
+    for ntype in g_hetero.ntypes:
+        g_attrs["get_ntype_id"][ntype] = g_hetero.get_ntype_id(ntype)
+        g_attrs["num_nodes"][ntype] = g_hetero.num_nodes(ntype)
+        g_attrs["nodes_data"][ntype] = g_hetero.nodes[ntype].data
+    for etype in g_hetero.canonical_etypes:
+        g_attrs["get_etype_id"][etype] = g_hetero.get_etype_id(etype)
+        g_attrs["num_edges"][etype] = g_hetero.num_edges(etype)
+        g_attrs["edges_data"][etype] = g_hetero.edges[etype].data
+    g_attrs["num_nodes"][""] = g_hetero.num_nodes()
+    g_attrs["num_edges"][""] = g_hetero.num_edges()
+
+    return g_attrs
 
 def assert_git_exists() -> None:
     """Check if git is installed and available in the path."""

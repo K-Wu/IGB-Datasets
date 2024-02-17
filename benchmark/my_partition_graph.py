@@ -15,14 +15,63 @@ from dgl.distributed.graph_partition_book import (
     _etype_tuple_to_str,
 )
 
+
+def _my_get_orig_ids(g_attrs, sim_g, orig_nids, orig_eids):
+    """Convert/construct the original node IDs and edge IDs.
+
+    It handles multiple cases:
+     * If the graph has been reshuffled and it's a homogeneous graph, we just return
+       the original node IDs and edge IDs in the inputs.
+     * If the graph has been reshuffled and it's a heterogeneous graph, we need to
+       split the original node IDs and edge IDs in the inputs based on the node types
+       and edge types.
+     * If the graph is not shuffled, the original node IDs and edge IDs don't change.
+
+    Parameters
+    ----------
+    g : DGLGraph
+       The input graph for partitioning.
+    sim_g : DGLGraph
+        The homogeneous version of the input graph.
+    orig_nids : tensor or None
+        The original node IDs after the input graph is reshuffled.
+    orig_eids : tensor or None
+        The original edge IDs after the input graph is reshuffled.
+
+    Returns
+    -------
+    tensor or dict of tensors, tensor or dict of tensors
+    """
+    is_hetero = not g_attrs["is_homogeneous"]
+    if is_hetero:
+        # Get the type IDs
+        orig_ntype = F.gather_row(sim_g.ndata[NTYPE], orig_nids)
+        orig_etype = F.gather_row(sim_g.edata[ETYPE], orig_eids)
+        # Mapping between shuffled global IDs to original per-type IDs
+        orig_nids = F.gather_row(sim_g.ndata[NID], orig_nids)
+        orig_eids = F.gather_row(sim_g.edata[EID], orig_eids)
+        orig_nids = {
+            ntype: F.boolean_mask(
+                orig_nids, orig_ntype == g_attrs["get_ntype_id"][ntype]
+            )
+            for ntype in g_attrs["ntypes"]
+        }
+        orig_eids = {
+            etype: F.boolean_mask(
+                orig_eids, orig_etype == g_attrs["get_etype_id"][etype]
+            )
+            for etype in g_attrs["canonical_etypes"]
+        }
+    return orig_nids, orig_eids
+
 """This is a memory-efficient version of partition_graph() at github/dmlc/dgl/python/dgl/distributed/partition.py. We do not convert the input graph to a homogeneous graph."""
-def my_random_partition_graph(g, 
+def my_random_partition_graph(sim_g, g_attrs,
     graph_name,
     num_parts,
     out_path,
     num_hops=1,num_trainers_per_machine=1,return_mapping=False, part_method="random",graph_formats=None):
     # sim_g is the converted homogeneous graph in the original code, we do not convert it here
-    sim_g = g
+    # TODO: add back metis
     node_parts = random_choice(num_parts, sim_g.num_nodes())
     print("random_choice done", flush=True)
     if return_mapping:
@@ -41,7 +90,67 @@ def my_random_partition_graph(g,
     
     if return_mapping:
         raise NotImplementedError("return_mapping needs to be rewritten")
-        orig_nids, orig_eids = _get_orig_ids(g, sim_g, orig_nids, orig_eids)
+        orig_nids, orig_eids = _my_get_orig_ids(g_attrs, sim_g, orig_nids, orig_eids)
+
+    # TODO: Add back getting the original node types and original node IDs if heterogeneous graph
+    # If the input is a heterogeneous graph, get the original node types and original node IDs.
+    # `part' has three types of node data at this point.
+    # NTYPE: the node type.
+    # orig_id: the global node IDs in the homogeneous version of input graph.
+    # NID: the global node IDs in the reshuffled homogeneous version of the input graph.
+    if not g_attrs["is_homogeneous"]:
+        for name in parts:
+            orig_ids = parts[name].ndata["orig_id"]
+            ntype = F.gather_row(sim_g.ndata[NTYPE], orig_ids)
+            parts[name].ndata[NTYPE] = F.astype(
+                ntype, RESERVED_FIELD_DTYPE[NTYPE]
+            )
+            assert np.all(
+                F.asnumpy(ntype) == F.asnumpy(parts[name].ndata[NTYPE])
+            )
+            # Get the original edge types and original edge IDs.
+            orig_ids = parts[name].edata["orig_id"]
+            etype = F.gather_row(sim_g.edata[ETYPE], orig_ids)
+            parts[name].edata[ETYPE] = F.astype(
+                etype, RESERVED_FIELD_DTYPE[ETYPE]
+            )
+            assert np.all(
+                F.asnumpy(etype) == F.asnumpy(parts[name].edata[ETYPE])
+            )
+
+            # Calculate the global node IDs to per-node IDs mapping.
+            inner_ntype = F.boolean_mask(
+                parts[name].ndata[NTYPE], parts[name].ndata["inner_node"] == 1
+            )
+            inner_nids = F.boolean_mask(
+                parts[name].ndata[NID], parts[name].ndata["inner_node"] == 1
+            )
+            for ntype in g_attrs["ntypes"]:
+                inner_ntype_mask = inner_ntype == g_attrs["get_ntype_id"][ntype]
+                typed_nids = F.boolean_mask(inner_nids, inner_ntype_mask)
+                # inner node IDs are in a contiguous ID range.
+                expected_range = np.arange(
+                    int(F.as_scalar(typed_nids[0])),
+                    int(F.as_scalar(typed_nids[-1])) + 1,
+                )
+                assert np.all(F.asnumpy(typed_nids) == expected_range)
+            # Calculate the global edge IDs to per-edge IDs mapping.
+            inner_etype = F.boolean_mask(
+                parts[name].edata[ETYPE], parts[name].edata["inner_edge"] == 1
+            )
+            inner_eids = F.boolean_mask(
+                parts[name].edata[EID], parts[name].edata["inner_edge"] == 1
+            )
+            for etype in g_attrs["canonical_etypes"]:
+                inner_etype_mask = inner_etype == g_attrs["get_etype_id"][etype]
+                typed_eids = np.sort(
+                    F.asnumpy(F.boolean_mask(inner_eids, inner_etype_mask))
+                )
+                assert np.all(
+                    typed_eids
+                    == np.arange(int(typed_eids[0]), int(typed_eids[-1]) + 1)
+                )
+
     os.makedirs(out_path, mode=0o775, exist_ok=True)
     tot_num_inner_edges = 0
     out_path = os.path.abspath(out_path)
@@ -53,8 +162,8 @@ def my_random_partition_graph(g,
     if num_parts > 1:
         node_map_val = {}
         edge_map_val = {}
-        for ntype in g.ntypes:
-            ntype_id = g.get_ntype_id(ntype)
+        for ntype in g_attrs["ntypes"]:
+            ntype_id = g_attrs["get_ntype_id"][ntype]
             val = []
             node_map_val[ntype] = []
             for i in parts:
@@ -72,9 +181,9 @@ def my_random_partition_graph(g,
                     ]
                 )
             val = np.cumsum(val).tolist()
-            assert val[-1] == g.num_nodes(ntype)
-        for etype in g.canonical_etypes:
-            etype_id = g.get_etype_id(etype)
+            assert val[-1] == g_attrs["num_nodes"][ntype]
+        for etype in g_attrs["canonical_etypes"]:
+            etype_id = g_attrs["get_etype_id"][etype]
             val = []
             edge_map_val[etype] = []
             for i in parts:
@@ -91,19 +200,19 @@ def my_random_partition_graph(g,
                     [int(inner_eids[0]), int(inner_eids[-1]) + 1]
                 )
             val = np.cumsum(val).tolist()
-            assert val[-1] == g.num_edges(etype)
+            assert val[-1] == g_attrs["num_edges"][etype]
     else:
         raise NotImplementedError("num_parts == 1 is not supported yet")
     
     print("map val production done", flush=True)
     
     start = time.time()
-    ntypes = {ntype: g.get_ntype_id(ntype) for ntype in g.ntypes}
-    etypes = {etype: g.get_etype_id(etype) for etype in g.canonical_etypes}
+    ntypes = {ntype: g_attrs["get_ntype_id"][ntype] for ntype in g_attrs["ntypes"]}
+    etypes = {etype: g_attrs["get_etype_id"][etype] for etype in g_attrs["canonical_etypes"]}
     part_metadata = {
         "graph_name": graph_name,
-        "num_nodes": g.num_nodes(),
-        "num_edges": g.num_edges(),
+        "num_nodes": g_attrs["num_nodes"][""],
+        "num_edges": g_attrs["num_edges"][""],
         "part_method": part_method,
         "num_parts": num_parts,
         "halo_hops": num_hops,
@@ -119,8 +228,8 @@ def my_random_partition_graph(g,
         node_feats = {}
         edge_feats = {}
         if num_parts > 1:
-            for ntype in g.ntypes:
-                ntype_id = g.get_ntype_id(ntype)
+            for ntype in g_attrs["ntypes"]:
+                ntype_id = g_attrs["get_ntype_id"][ntype]
                 # To get the edges in the input graph, we should use original node IDs.
                 # Both orig_id and NID stores the per-node-type IDs.
                 # KWU: If reshuffling is not done, use instead ndata_name = NID. However, later loading will trigger error because the indices in each part is no longer contiguous.
@@ -130,7 +239,7 @@ def my_random_partition_graph(g,
                 local_nodes = F.boolean_mask(
                     part.ndata[ndata_name], inner_node_mask
                 )
-                if len(g.ntypes) > 1:
+                if len(g_attrs["ntypes"]) > 1:
                     # If the input is a heterogeneous graph.
                     local_nodes = F.gather_row(sim_g.ndata[NID], local_nodes)
                     print(
@@ -150,15 +259,15 @@ def my_random_partition_graph(g,
                         ), flush=True
                     )
 
-                for name in g.nodes[ntype].data:
+                for name in g_attrs["nodes_data"][ntype]:
                     if name in [NID, "inner_node"]:
                         continue
                     node_feats[ntype + "/" + name] = F.gather_row(
-                        g.nodes[ntype].data[name], local_nodes
+                        g_attrs["nodes_data"][ntype][name], local_nodes
                     )
 
-            for etype in g.canonical_etypes:
-                etype_id = g.get_etype_id(etype)
+            for etype in g_attrs["canonical_etypes"]:
+                etype_id = g_attrs["get_etype_id"][etype]
                 # KWU: If reshuffling is not done, use instead edata_name = EID. However, later loading will trigger error because the indices in each part is no longer contiguous.
                 edata_name = "orig_id"
                 inner_edge_mask = _get_inner_edge_mask(part, etype_id)
@@ -166,7 +275,7 @@ def my_random_partition_graph(g,
                 local_edges = F.boolean_mask(
                     part.edata[edata_name], inner_edge_mask
                 )
-                if not g.is_homogeneous:
+                if not g_attrs["is_homogeneous"]:
                     local_edges = F.gather_row(sim_g.edata[EID], local_edges)
                     print(
                         "part {} has {} edges of type {} and {} are inside the partition".format(
@@ -186,12 +295,12 @@ def my_random_partition_graph(g,
                     )
                 tot_num_inner_edges += len(local_edges)
 
-                for name in g.edges[etype].data:
+                for name in g_attrs["edges_data"][etype]:
                     if name in [EID, "inner_edge"]:
                         continue
                     edge_feats[
                         _etype_tuple_to_str(etype) + "/" + name
-                    ] = F.gather_row(g.edges[etype].data[name], local_edges)
+                    ] = F.gather_row(g_attrs["edges_data"][etype][name], local_edges)
 
         else:
             raise NotImplementedError("num_parts == 1 is not supported yet")
@@ -214,7 +323,7 @@ def my_random_partition_graph(g,
         save_tensors(node_feat_file, node_feats)
         save_tensors(edge_feat_file, edge_feats)
 
-        sort_etypes = len(g.etypes) > 1
+        sort_etypes = len(g_attrs["etypes"]) > 1
         _save_graphs(
             part_graph_file,
             [part],
@@ -234,7 +343,7 @@ def my_random_partition_graph(g,
         num_cuts = 0
     print(
         "There are {} edges in the graph and {} edge cuts for {} partitions.".format(
-            g.num_edges(), num_cuts, num_parts
+            g_attrs["num_edges"][""], num_cuts, num_parts
         ), flush=True
     )
 
