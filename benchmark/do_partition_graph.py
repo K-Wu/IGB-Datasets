@@ -4,6 +4,7 @@ import time
 
 import dgl
 import torch as th
+import time
 
 from dgl.convert import to_homogeneous
 from .utils import get_igbh_config, get_igb_config, is_pwd_correct_for_benchmark, construct_graph_attributes
@@ -210,12 +211,13 @@ if __name__ == "__main__":
     else:
         balance_ntypes = None
 
+    start = time.time()
     if args.undirected:
         sym_g = dgl.to_bidirected(g, readonly=True)
         for key in g.ndata:
             sym_g.ndata[key] = g.ndata[key]
         g = sym_g
-    print("Converted to (or skipped the conversion of) undirected graph", flush=True)
+    print("Converted to (or skipped the conversion of) undirected graph {:.3f}".format(time.time() - start), flush=True)
 
     # dgl.distributed.partition_graph(
     #     g,

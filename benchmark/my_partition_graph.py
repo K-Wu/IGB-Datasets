@@ -82,8 +82,10 @@ def my_random_partition_graph(sim_g, g_attrs,
     num_hops=1,num_trainers_per_machine=1,return_mapping=False, part_method="random",graph_formats=None):
     # sim_g is the converted homogeneous graph in the original code, we do not convert it here
     # TODO: add back metis
+    start = time.time()
     node_parts = random_choice(num_parts, sim_g.num_nodes())
-    print("random_choice done", flush=True)
+    print("random_choice done {:.3f}".format(time.time() - start), flush=True)
+    start = time.time()
     if return_mapping:
         sim_g.ndata["orig_id"] = F.arange(0, sim_g.num_nodes())
         sim_g.edata["orig_id"] = F.arange(0, sim_g.num_edges())
@@ -93,7 +95,7 @@ def my_random_partition_graph(sim_g, g_attrs,
     parts, orig_nids, orig_eids = partition_graph_with_halo(
         sim_g, node_parts, num_hops, reshuffle=True
     )
-    print("partition_graph_with_halo done", flush=True)
+    print("partition_graph_with_halo done {:.3f}".format(time.time() - start), flush=True)
     # Node mapping is in halo_subg.induced_vertices
     # according to GetSubgraphWithHalo dmlc/dgl/src/graph/transform/partition_hetero.cc
     # It can be obtained in python by subg.induced_nodes()
@@ -102,12 +104,13 @@ def my_random_partition_graph(sim_g, g_attrs,
         raise NotImplementedError("return_mapping needs to be rewritten")
         orig_nids, orig_eids = _my_get_orig_ids(g_attrs, sim_g, orig_nids, orig_eids)
 
-    # TODO: Add back getting the original node types and original node IDs if heterogeneous graph
+    # Getting the original node types and original node IDs if heterogeneous graph
     # If the input is a heterogeneous graph, get the original node types and original node IDs.
     # `part' has three types of node data at this point.
     # NTYPE: the node type.
     # orig_id: the global node IDs in the homogeneous version of input graph.
     # NID: the global node IDs in the reshuffled homogeneous version of the input graph.
+    start = time.time()
     if not g_attrs["is_homogeneous"]:
         for name in parts:
             orig_ids = parts[name].ndata["orig_id"]
@@ -214,7 +217,7 @@ def my_random_partition_graph(sim_g, g_attrs,
     else:
         raise NotImplementedError("num_parts == 1 is not supported yet")
     
-    print("map val production done", flush=True)
+    print("map val production done {:.3f}".format(time.time() - start), flush=True)
     
     start = time.time()
     ntypes = {ntype: g_attrs["get_ntype_id"][ntype] for ntype in g_attrs["ntypes"]}
