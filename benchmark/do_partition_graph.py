@@ -149,9 +149,9 @@ if __name__ == "__main__":
         help="turn the graph into an undirected graph.",
     )
     argparser.add_argument(
-        "--homogeneous",
+        "--heterogeneous",
         action="store_true",
-        help="convert the graph to a homogeneous graph.",
+        help="not convert the graph to a homogeneous graph.",
     )
     argparser.add_argument(
         "--memory_efficient_impl",
@@ -231,8 +231,9 @@ if __name__ == "__main__":
     if args.memory_efficient_impl:
         # g_attrs needs to be passed to partition_graph. It should be from the original heterogeneous graph before conversion to homogeneous graph.
         g_attrs = construct_graph_attributes(g) 
-        if args.homogeneous:
-        g = dgl.to_homogeneous(g, readonly=True)
+        if not args.heterogeneous:
+            g_attrs["is_homogeneous"] = True
+        g = dgl.to_homogeneous(g)
         print("Converted to homogeneous graph", flush=True)
         from .my_partition_graph import my_random_partition_graph
         my_random_partition_graph(g, g_attrs, args.dataset, args.num_parts, "out_data")

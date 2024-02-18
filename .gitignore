@@ -6,3 +6,5 @@ dataset/mag240m_kddcup2021
 out_*/
 .vscode/
 *.bak
+*.dgl
+*.json

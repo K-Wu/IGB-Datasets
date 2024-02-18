@@ -16,6 +16,16 @@ from dgl.distributed.graph_partition_book import (
 )
 
 
+RESERVED_FIELD_DTYPE = {
+    "inner_node": F.uint8,  # A flag indicates whether the node is inside a partition.
+    "inner_edge": F.uint8,  # A flag indicates whether the edge is inside a partition.
+    NID: F.int64,
+    EID: F.int64,
+    NTYPE: F.int16,
+    # `sort_csr_by_tag` and `sort_csc_by_tag` works on int32/64 only.
+    ETYPE: F.int32,
+}
+
 def _my_get_orig_ids(g_attrs, sim_g, orig_nids, orig_eids):
     """Convert/construct the original node IDs and edge IDs.
 
