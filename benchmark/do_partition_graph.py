@@ -231,11 +231,13 @@ if __name__ == "__main__":
     # )
 
     if args.memory_efficient_impl:
-        # g_attrs needs to be passed to partition_graph. It should be from the original heterogeneous graph before conversion to homogeneous graph.
-        g_attrs = construct_graph_attributes(g) 
-        if not args.heterogeneous:
-            g_attrs["is_homogeneous"] = True
+        if args.heterogeneous:
+            # g_attrs needs to be passed to partition_graph. In case of heterogeneous graph, it should be from the original heterogeneous graph before conversion to homogeneous graph.
+            g_attrs = construct_graph_attributes(g) 
         g = dgl.to_homogeneous(g)
+        if not args.heterogeneous:
+            # g_attrs needs to be passed to partition_graph. In case of homogeneous graph, it should be from the homogeneous graph.
+            g_attrs = construct_graph_attributes(g) 
         print("Converted to homogeneous graph", flush=True)
         from .my_partition_graph import my_random_partition_graph
         my_random_partition_graph(g, g_attrs, args.dataset, args.num_parts, "out_data")
