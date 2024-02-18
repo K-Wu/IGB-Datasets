@@ -347,6 +347,7 @@ def main(args):
     th.distributed.init_process_group(backend=args.backend)
     print(f"{host_name}: Initializing DistGraph.", flush=True)
     # e.g., g = dgl.distributed.DistGraph("igbh",part_config="./out_data_2_2/igbh600m.json")
+    # TODO: specify gpb (partition book) in the following DistGraph initiation argument, or enable shared memory of the server.
     g = dgl.distributed.DistGraph(args.graph_name, part_config=args.part_config)
     print(f"Rank of {host_name}: {g.rank()}", flush=True)
 
