@@ -685,6 +685,7 @@ def main():
 
 
 if __name__ == "__main__":
+    raise NotImplementedError("This script has synchronization issues.")
     fmt = "%(asctime)s %(levelname)s %(message)s"
     logging.basicConfig(format=fmt, level=logging.INFO)
     main()
