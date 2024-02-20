@@ -12,7 +12,31 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import tqdm
+from dgl.nn.pytorch import GATConv
 
+
+class DistGAT(nn.Module):
+    """Adapted from class GAT in /IGB-datasets/igb/models.py. Arguments of __init__ are renamed to unify with the DistSAGE class."""
+    def __init__(self, in_feats, n_hidden, n_classes, n_heads, n_layers=2, dropout=0.2):
+        super(DistGAT, self).__init__()
+        self.layers = nn.ModuleList()
+        self.layers.append(GATConv(in_feats, n_hidden, n_heads))
+        for _ in range(n_layers-2):
+            self.layers.append(GATConv(n_hidden * n_heads, n_hidden, n_heads))
+        self.layers.append(GATConv(n_hidden * n_heads, n_classes, n_heads))
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, blocks, x):
+        h = x
+        for l, (layer, block) in enumerate(zip(self.layers, blocks)):
+            h_dst = h[:block.num_dst_nodes()]
+            if l < len(self.layers) - 1:
+                h = layer(block, (h, h_dst)).flatten(1)
+                h = F.relu(h)
+                h = self.dropout(h)
+            else:
+                h = layer(block, (h, h_dst)).mean(1)  
+        return h
 
 class DistSAGE(nn.Module):
     """
@@ -222,14 +246,31 @@ def run(args, device, data):
         shuffle=True,
         drop_last=False,
     )
-    model = DistSAGE(
-        in_feats,
-        args.num_hidden,
-        n_classes,
-        args.num_layers,
-        F.relu,
-        args.dropout,
-    )
+    if args.model == "DistSAGE":
+        model = DistSAGE(
+            in_feats,
+            args.num_hidden,
+            n_classes,
+            args.num_layers,
+            F.relu,
+            args.dropout,
+        )
+    elif args.model == "DistGAT":
+        print("Using DistGAT model default parameters batch_size(2048) fanout (5,2,2,2) n_layers (4), hidden_dim 512, n_heads (4)")
+        assert args.batch_size == 2048
+        assert args.fan_out == "5,2,2,2"
+        assert args.num_layers == 4
+        assert args.num_hidden == 512
+        model = DistGAT(
+            in_feats,
+            n_hidden = args.num_hidden,
+            n_classes = n_classes,
+            n_heads = 4,
+            n_layers = args.num_layers,
+            dropout = args.dropout,
+        )
+    else:
+        raise ValueError(f"Unsupported model: {args.model}")
     model = model.to(device)
     if args.num_gpus == 0:
         model = th.nn.parallel.DistributedDataParallel(model)
@@ -258,11 +299,15 @@ def run(args, device, data):
         num_inputs = 0
         start = time.time()
         step_time = []
-
+        sampled_time_sampling = []
+        sampled_time_aggregation = []
+        sampled_time_training = []
+        sampled_step_beg = 1000
+        sampled_step_end = 1020
         with model.join():
             for step, (input_nodes, seeds, blocks) in enumerate(dataloader):
                 tic_step = time.time()
-                sample_time += tic_step - start
+                sample_time += tic_step - start  # KWU: Sample time
                 # Slice feature and label.
                 batch_inputs = g.ndata["features"][input_nodes]
                 batch_labels = g.ndata["labels"][seeds].long()
@@ -274,6 +319,7 @@ def run(args, device, data):
                 batch_labels = batch_labels.to(device)
                 # Compute loss and prediction.
                 start = time.time()
+                aggregate_time = start - tic_step # KWU: Aggregation time
                 batch_pred = model(blocks, batch_inputs)
                 loss = loss_fcn(batch_pred, batch_labels)
                 forward_end = time.time()
@@ -285,10 +331,12 @@ def run(args, device, data):
 
                 optimizer.step()
                 update_time += time.time() - compute_end
+                train_time = time.time() - start # KWU: Train time
 
                 step_t = time.time() - tic_step
                 step_time.append(step_t)
                 iter_tput.append(len(blocks[-1].dstdata[dgl.NID]) / step_t)
+                # Print stats every args.log_every steps.
                 if (step + 1) % args.log_every == 0:
                     acc = compute_acc(batch_pred, batch_labels)
                     gpu_mem_alloc = (
@@ -430,6 +478,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--part_config", type=str, help="The path to the partition config file"
+    )
+    parser.add_argument(
+        "--model", type=str, default="DistSAGE", help="model to use. DistSAGE or DistGAT"
     )
     parser.add_argument(
         "--n_classes", type=int, default=0, help="the number of classes"
