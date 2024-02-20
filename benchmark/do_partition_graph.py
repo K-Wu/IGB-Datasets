@@ -33,7 +33,9 @@ def load_igbh600m():
 
 def _load_igb(dataset_size: str):
     args = get_igb_config()
-    if dataset_size=="large":
+    if dataset_size =="medium":
+        args.dataset_size = "medium"
+    elif dataset_size=="large":
         args.dataset_size="large"
     elif dataset_size=="full":
         pass
@@ -48,6 +50,9 @@ def _load_igb(dataset_size: str):
 def load_igb240m():
     return _load_igb("full")
 
+
+def load_igb240m_medium():
+    return _load_igb("medium")
 
 def load_reddit(self_loop=True):
     """Load reddit dataset."""
@@ -131,7 +136,7 @@ if __name__ == "__main__":
         "--dataset",
         type=str,
         default="igbh600m",
-        help="datasets: igbh600m, igbhlarge, reddit, ogbn-products, ogbn-papers100M",
+        help="datasets: igbh600m, igbhlarge, igb240m, igb240m_medium, reddit, ogbn-products, ogbn-papers100M",
     )
     argparser.add_argument(
         "--num_parts", type=int, default=2, help="number of partitions (i.e. compute nodes in training)"
@@ -186,6 +191,8 @@ if __name__ == "__main__":
         g = load_igbh_large()
     elif args.dataset == "igb240m":
         g = load_igb240m()
+    elif args.dataset == "igb240m_medium":
+        g = load_igb240m_medium()
     elif args.dataset == "reddit":
         g, _ = load_reddit()
     elif args.dataset in ["ogbn-products", "ogbn-papers100M"]:
