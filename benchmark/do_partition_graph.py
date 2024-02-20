@@ -44,6 +44,8 @@ def _load_igb(dataset_size: str):
     print(args, flush=True)
     data = IGB260MDGLDataset(args)
     g = data.graph
+    g.ndata["features"] = g.ndata.pop('feat')
+    g.ndata["labels"] = g.ndata.pop('label')
     return g
 
 
@@ -59,8 +61,8 @@ def load_reddit(self_loop=True):
     from dgl.data import RedditDataset
     data = RedditDataset(self_loop=self_loop)
     g = data[0]
-    g.ndata["features"] = g.ndata.pop("feat")
-    g.ndata["labels"] = g.ndata.pop("label")
+    g.ndata["features"] = g.ndata.pop('feat')
+    g.ndata["labels"] = g.ndata.pop('label')
     return g, data.num_classes
 
 def load_ogb_lsc_mag_240m():
@@ -102,7 +104,7 @@ def load_ogb(name, root="dataset"):
     graph, labels = data[0]
     labels = labels[:, 0]
 
-    graph.ndata["features"] = graph.ndata.pop("feat")
+    graph.ndata["features"] = graph.ndata.pop('feat')
     graph.ndata["labels"] = labels
     num_labels = len(th.unique(labels[th.logical_not(th.isnan(labels))]))
 
