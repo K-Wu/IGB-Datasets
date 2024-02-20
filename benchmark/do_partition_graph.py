@@ -10,7 +10,7 @@ from dgl.convert import to_homogeneous
 from .utils import get_igbh_config, get_igb_config, is_pwd_correct_for_benchmark, construct_graph_attributes
 from igb.dataloader import IGBHeteroDGLDatasetMassive, IGB260MDGLDataset
 
-def _load_igbh(dataset_size: str):
+def _load_igbh(dataset_size: str, use_dummy_feats:bool = False):
     args = get_igbh_config()
     args.load_homo_graph = False
     if dataset_size=="large":
@@ -19,7 +19,11 @@ def _load_igbh(dataset_size: str):
         pass
     else:
         raise ValueError(f"Unknown igbh dataset_size: {dataset_size}")
+    if not use_dummy_feats:
+        args.dummy_feats=0
     print(args, flush=True)
+    if args.dummy_feats:
+        print("using dummy feats")
     data =  IGBHeteroDGLDatasetMassive(args)
     g = data.graph
     return g
@@ -31,7 +35,7 @@ def load_igbh_large():
 def load_igbh600m():
     return _load_igbh("full")
 
-def _load_igb(dataset_size: str):
+def _load_igb(dataset_size: str,use_dummy_feats:bool = True):
     args = get_igb_config()
     if dataset_size =="medium":
         args.dataset_size = "medium"
@@ -41,7 +45,11 @@ def _load_igb(dataset_size: str):
         pass
     else:
         raise ValueError(f"Unknown igb dataset_size: {dataset_size}")
+    if not use_dummy_feats:
+        args.dummy_feats=0
     print(args, flush=True)
+    if args.dummy_feats:
+        print("using dummy feats")
     data = IGB260MDGLDataset(args)
     g = data.graph
     g.ndata["features"] = g.ndata.pop('feat')
@@ -54,7 +62,7 @@ def load_igb240m():
 
 
 def load_igb240m_medium():
-    return _load_igb("medium")
+    return _load_igb("medium",use_dummy_feats=False)
 
 def load_reddit(self_loop=True):
     """Load reddit dataset."""

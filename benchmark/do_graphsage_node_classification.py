@@ -468,7 +468,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--regenerate_node_features",
-        default=True,
+        default=False,
         action="store_true",
         help="Regenerate node features.",
     )

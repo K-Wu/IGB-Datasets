@@ -79,8 +79,6 @@ def get_igbh_config() ->argparse.ArgumentParser:
     args.dummy_feats=1
     args.synthetic=1
     args.all_in_edges=True
-    if args.dummy_feats:
-        print("using dummy feats")
 
     # dataset = IGBHeteroDGLDataset(args)
     # g = dataset[0]

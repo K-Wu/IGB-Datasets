@@ -24,7 +24,7 @@ which python
 if [ "$#" -eq 0 ]
 then
     # The dataset is by default igbh-full
-    catchsegv python -m benchmark.do_partition_graph --memory_efficient_impl
+    catchsegv python -m benchmark.do_partition_graph
 else
-    catchsegv python -m benchmark.do_partition_graph --memory_efficient_impl --dataset=$1
+    catchsegv python -m benchmark.do_partition_graph --dataset=$1
 fi
