@@ -3,8 +3,11 @@
 *.err
 *.out
 dataset/mag240m_kddcup2021
+dataset/ogbn_papers100M
 out_*/
 .vscode/
 *.bak
 *.dgl
 *.json
+*.npz
+*.gz
