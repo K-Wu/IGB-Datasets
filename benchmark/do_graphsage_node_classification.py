@@ -130,11 +130,11 @@ class DistSAGE(nn.Module):
                 name,
                 persistent=True,
             )
-            print(f"|V|={g.num_nodes()}, inference batch size: {batch_size}")
+            print(f"|V|={g.num_nodes()}, inference batch size: {batch_size}", flush=True)
 
             # `-1` indicates all inbound edges will be inlcuded, namely, full
             # neighbor sampling.
-            sampler = dgl.dataloading.NeighborSampler([-1])
+            sampler = dgl.dataloading.NeighborSampler([-1], fused=False) # fused=True is not supported in DistGraph
             dataloader = dgl.dataloading.DistNodeDataLoader(
                 g,
                 nodes,
@@ -234,6 +234,7 @@ def run(args, device, data):
         Packed data includes train/val/test IDs, feature dimension,
         number of classes, graph.
     """
+    host_name = socket.gethostname()
     train_nid, val_nid, test_nid, in_feats, n_classes, g = data
     sampler = dgl.dataloading.NeighborSampler(
         [int(fanout) for fanout in args.fan_out.split(",")]
@@ -256,7 +257,7 @@ def run(args, device, data):
             args.dropout,
         )
     elif args.model == "DistGAT":
-        print("Using DistGAT model default parameters batch_size(2048) fanout (5,2,2,2) n_layers (4), hidden_dim 512, n_heads (4)")
+        print(f"{host_name} {g.rank()}: Using DistGAT model default parameters batch_size(2048) fanout (5,2,2,2) n_layers (4), hidden_dim 512, n_heads (4)", flush=True)
         assert args.batch_size == 2048
         assert args.fan_out == "5,2,2,2"
         assert args.num_layers == 4
@@ -291,7 +292,7 @@ def run(args, device, data):
         epoch += 1
         tic = time.time()
         # Various time statistics.
-        sample_time = 0
+        sample_and_aggregate_time = 0
         forward_time = 0
         backward_time = 0
         update_time = 0
@@ -299,15 +300,15 @@ def run(args, device, data):
         num_inputs = 0
         start = time.time()
         step_time = []
-        sampled_time_sampling = []
-        sampled_time_aggregation = []
-        sampled_time_training = []
+        sampled_times_sampling = []
+        sampled_times_movement = []
+        sampled_times_training = []
         sampled_step_beg = 1000
-        sampled_step_end = 1020
+        sampled_step_end = 1100
         with model.join():
             for step, (input_nodes, seeds, blocks) in enumerate(dataloader):
                 tic_step = time.time()
-                sample_time += tic_step - start  # KWU: Sample time
+                sample_and_aggregate_time += tic_step - start  # KWU: Sample and aggregation time
                 # Slice feature and label.
                 batch_inputs = g.ndata["features"][input_nodes]
                 batch_labels = g.ndata["labels"][seeds].long()
@@ -319,7 +320,7 @@ def run(args, device, data):
                 batch_labels = batch_labels.to(device)
                 # Compute loss and prediction.
                 start = time.time()
-                aggregate_time = start - tic_step # KWU: Aggregation time
+                movement_time = start - tic_step # KWU: Movement time
                 batch_pred = model(blocks, batch_inputs)
                 loss = loss_fcn(batch_pred, batch_labels)
                 forward_end = time.time()
@@ -336,6 +337,15 @@ def run(args, device, data):
                 step_t = time.time() - tic_step
                 step_time.append(step_t)
                 iter_tput.append(len(blocks[-1].dstdata[dgl.NID]) / step_t)
+
+                if step >= sampled_step_beg and step < sampled_step_end:
+                    sampled_times_sampling.append(sample_and_aggregate_time)
+                    sampled_times_movement.append(movement_time)
+                    sampled_times_training.append(train_time)
+                    print(f"{host_name} {g.rank()}: Part {g.rank()} | Epoch {epoch:05d} | Step {step:05d} | Sample + Aggregation Time {sample_and_aggregate_time:.4f} sec | Movement Time {movement_time:.4f} sec | Train Time {train_time:.4f} sec", flush=True)
+                if step == sampled_step_end:
+                    # Exit the loop
+                    break
                 # Print stats every args.log_every steps.
                 if (step + 1) % args.log_every == 0:
                     acc = compute_acc(batch_pred, batch_labels)
@@ -347,20 +357,20 @@ def run(args, device, data):
                     sample_speed = np.mean(iter_tput[-args.log_every :])
                     mean_step_time = np.mean(step_time[-args.log_every :])
                     print(
-                        f"Part {g.rank()} | Epoch {epoch:05d} | Step {step:05d}"
+                        f"{host_name} {g.rank()}: Part {g.rank()} | Epoch {epoch:05d} | Step {step:05d}"
                         f" | Loss {loss.item():.4f} | Train Acc {acc.item():.4f}"
                         f" | Speed (samples/sec) {sample_speed:.4f}"
                         f" | GPU {gpu_mem_alloc:.1f} MB | "
-                        f"Mean step time {mean_step_time:.3f} s"
+                        f"Mean step time {mean_step_time:.3f} s", flush=True
                     )
                 start = time.time()
 
         toc = time.time()
         print(
-            f"Part {g.rank()}, Epoch Time(s): {toc - tic:.4f}, "
-            f"sample+data_copy: {sample_time:.4f}, forward: {forward_time:.4f},"
+            f"{host_name} {g.rank()}: Part {g.rank()}, Epoch Time(s): {toc - tic:.4f}, "
+            f"sample+data_copy: {sample_and_aggregate_time:.4f}, forward: {forward_time:.4f},"
             f" backward: {backward_time:.4f}, update: {update_time:.4f}, "
-            f"#seeds: {num_seeds}, #inputs: {num_inputs}"
+            f"#seeds: {num_seeds}, #inputs: {num_inputs}", flush=True
         )
         epoch_time.append(toc - tic)
 
@@ -378,7 +388,7 @@ def run(args, device, data):
             )
             print(
                 f"Part {g.rank()}, Val Acc {val_acc:.4f}, "
-                f"Test Acc {test_acc:.4f}, time: {time.time() - start:.4f}"
+                f"Test Acc {test_acc:.4f}, time: {time.time() - start:.4f}", flush=True
             )
 
     return np.mean(epoch_time[-int(args.num_epochs * 0.8) :]), test_acc
@@ -395,13 +405,13 @@ def main(args):
     th.distributed.init_process_group(backend=args.backend)
     print(f"{host_name}: Initializing DistGraph.", flush=True)
     # e.g., g = dgl.distributed.DistGraph("igbh",part_config="./out_data_2_2/igbh600m.json")
-    # TODO: specify gpb (partition book) in the following DistGraph initiation argument, or enable shared memory of the server.
+    # Either enable shared memory of the server (by default by dgl), or specify gpb (partition book) in the following DistGraph initiation argument.
     g = dgl.distributed.DistGraph(args.graph_name, part_config=args.part_config)
-    print(f"Rank of {host_name}: {g.rank()}", flush=True)
+    print(f"{host_name} {g.rank()}: Rank of {host_name}: {g.rank()}", flush=True)
 
     if args.regenerate_node_features:
-        print(f"{host_name}: Regenerating node features.", flush=True)
-        print(f"{host_name}: num_nodes ", g.num_nodes(), flush=True)
+        print(f"{host_name} {g.rank()}: Regenerating node features.", flush=True)
+        print(f"{host_name} {g.rank()}: num_nodes ", g.num_nodes(), flush=True)
         g.ndata["features"] = th.randn(g.num_nodes(), 1024)
 
     # Split train/val/test IDs for each trainer.
@@ -440,9 +450,9 @@ def main(args):
     num_val_local = len(np.intersect1d(val_nid.numpy(), local_nid))
     num_test_local = len(np.intersect1d(test_nid.numpy(), local_nid))
     print(
-        f"part {g.rank()}, train: {len(train_nid)} (local: {num_train_local}), "
+        f"{host_name} {g.rank()}: part {g.rank()}, train: {len(train_nid)} (local: {num_train_local}), "
         f"val: {len(val_nid)} (local: {num_val_local}), "
-        f"test: {len(test_nid)} (local: {num_test_local})"
+        f"test: {len(test_nid)} (local: {num_test_local})", flush=True
     )
     del local_nid
     if args.num_gpus == 0:
@@ -455,18 +465,19 @@ def main(args):
         labels = g.ndata["labels"][np.arange(g.num_nodes())]
         n_classes = len(th.unique(labels[th.logical_not(th.isnan(labels))]))
         del labels
-    print(f"Number of classes: {n_classes}")
+    print(f"{host_name} {g.rank()}: Number of classes: {n_classes}", flush=True)
 
     # Pack data.
     in_feats = g.ndata["features"].shape[1]
     data = train_nid, val_nid, test_nid, in_feats, n_classes, g
 
+
     # Train and evaluate.
     epoch_time, test_acc = run(args, device, data)
     print(
-        f"Summary of node classification(GraphSAGE): GraphName "
+        f"{host_name} {g.rank()}: Summary of node classification(GraphSAGE): GraphName "
         f"{args.graph_name} | TrainEpochTime(mean) {epoch_time:.4f} "
-        f"| TestAccuracy {test_acc:.4f}"
+        f"| TestAccuracy {test_acc:.4f}", flush=True
     )
 
 
@@ -524,5 +535,5 @@ if __name__ == "__main__":
         help="Regenerate node features.",
     )
     args = parser.parse_args()
-    print(f"Arguments: {args}")
+    print(f"Arguments: {args}", flush=True)
     main(args)
