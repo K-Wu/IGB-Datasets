@@ -343,8 +343,12 @@ def run(args, device, data):
                     sampled_times_movement.append(movement_time)
                     sampled_times_training.append(train_time)
                     print(f"{host_name} {g.rank()}: Part {g.rank()} | Epoch {epoch:05d} | Step {step:05d} | Sample + Aggregation Time {sample_and_aggregate_time:.4f} sec | Movement Time {movement_time:.4f} sec | Train Time {train_time:.4f} sec", flush=True)
+                
+                if step == sampled_step_beg - 1:
+                    sampler.set_print_times()
                 if step == sampled_step_end:
                     # Exit the loop
+                    sampler.reset_print_times()
                     break
                 # Print stats every args.log_every steps.
                 if (step + 1) % args.log_every == 0:
