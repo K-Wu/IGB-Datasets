@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --time=167:59:00
-#SBATCH -p a100
+#SBATCH -p a100rome
 #SBATCH --exclusive
 #SBATCH --ntasks-per-node=5
 #SBATCH --nodes=2
