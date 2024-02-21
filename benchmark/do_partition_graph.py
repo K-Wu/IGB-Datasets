@@ -98,9 +98,7 @@ def load_ogb_lsc_mag_240m():
     graph = dgl.heterograph(graph_data, num_nodes_dict)  
     print("Created heterograph", flush=True)
 
-    graph_homo = to_homogeneous(graph)
-    print("Converted to homograph", flush=True)
-    return graph_homo, dataset.num_classes
+    return graph, dataset.num_classes
 
     
 
