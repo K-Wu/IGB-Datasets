@@ -378,7 +378,8 @@ def run(args, device, data):
         )
         epoch_time.append(toc - tic)
 
-        if epoch % args.eval_every == 0 or epoch == args.num_epochs:
+        # TODO: work on DistGAT.inference()
+        if (epoch % args.eval_every == 0 or epoch == args.num_epochs) and isinstance(model, DistGAT):
             start = time.time()
             val_acc, test_acc = evaluate(
                 model.module,
