@@ -8,13 +8,15 @@ import time
 
 from dgl.convert import to_homogeneous
 from .utils import get_igbh_config, get_igb_config, is_pwd_correct_for_benchmark, construct_graph_attributes
-from igb.dataloader import IGBHeteroDGLDatasetMassive, IGB260MDGLDataset
+from igb.dataloader import IGBHeteroDGLDatasetMassive, IGB260MDGLDataset, IGBHeteroDGLDataset
 
 def _load_igbh(dataset_size: str, use_dummy_feats:bool = False):
     args = get_igbh_config()
     args.load_homo_graph = False
     if dataset_size=="large":
         args.dataset_size="large"
+    elif dataset_size == "medium":
+        args.dataset_size="medium"
     elif dataset_size=="full":
         pass
     else:
@@ -24,7 +26,10 @@ def _load_igbh(dataset_size: str, use_dummy_feats:bool = False):
     print(args, flush=True)
     if args.dummy_feats:
         print("using dummy feats")
-    data =  IGBHeteroDGLDatasetMassive(args)
+    if dataset_size == "large" or dataset_size=="full":
+        data =  IGBHeteroDGLDatasetMassive(args)
+    else:
+        data = IGBHeteroDGLDataset(args)
     g = data.graph
     return g
 
@@ -72,33 +77,6 @@ def load_reddit(self_loop=True):
     g.ndata["features"] = g.ndata.pop('feat')
     g.ndata["labels"] = g.ndata.pop('label')
     return g, data.num_classes
-
-def load_ogb_lsc_mag_240m():
-    from ogb.lsc import MAG240MDataset
-    dataset = MAG240MDataset()
-    '''
-    edge_index is numpy.ndarray of shape (2, num_edges).
-    - first row: indices of source nodes (indexed by source node types)
-    - second row: indices of target nodes (indexed by target node types)
-    In other words, i-th edge connects from edge_index[0,i] to edge_index[1,i].
-    '''
-    edge_index_writes = dataset.edge_index('author', 'writes', 'paper') 
-    edge_index_cites = dataset.edge_index('paper', 'paper')
-    edge_index_affiliated_with = dataset.edge_index('author', 'institution')
-    print("Constructing graph_data", flush=True)
-    graph_data = {
-        ('author', 'affiliated_with', 'institute'): (edge_index_affiliated_with[0,:], edge_index_affiliated_with[1,:]),
-        ('paper', 'cites', 'paper'): (edge_index_cites[0,:], edge_index_cites[1,:]),
-        ('author', 'writes', 'paper'): (edge_index_writes[ 0, :], edge_index_writes[ 1,:]),
-    }
-    print("Constructed graph_data", flush=True)
-
-    num_nodes_dict = {'paper': dataset.num_papers, 'author': dataset.num_authors, 'institute': dataset.num_institutions}
-
-    graph = dgl.heterograph(graph_data, num_nodes_dict)  
-    print("Created heterograph", flush=True)
-
-    return graph, dataset.num_classes
 
     
 
@@ -191,10 +169,14 @@ if __name__ == "__main__":
         help="Output path of partitioned graph.",
     )
     args = argparser.parse_args()
+    if args.heterogeneous:
+        raise NotImplementedError("Please use the graph partitioning and distributed training script in .heterogeneous_version")
 
     start = time.time()
     if args.dataset == "igbh600m":
         g = load_igbh600m()
+    elif args.dataset == "igbhmedium":
+        g = _load_igbh("medium")
     elif args.dataset == "igbhlarge":
         g = load_igbh_large()
     elif args.dataset == "igb240m":
@@ -255,7 +237,9 @@ if __name__ == "__main__":
             g_attrs = construct_graph_attributes(g) 
         print("Converted to homogeneous graph", flush=True)
         from .my_partition_graph import my_random_partition_graph
-        my_random_partition_graph(g, g_attrs, args.dataset, args.num_parts, "out_data")
+        my_random_partition_graph(g, g_attrs, args.dataset, args.num_parts, "out_single_dataset")
     else:
         from dgl.distributed.partition import partition_graph
-        partition_graph(g, args.dataset, args.num_parts, "out_data_dgl_method", part_method = "random")
+        start = time.time()
+        partition_graph(g, args.dataset, args.num_parts, "out_single_dataset_dgl_method", part_method = "random")
+        print("Partitioning graph takes {:.3f} seconds".format(time.time() - start), flush=True)

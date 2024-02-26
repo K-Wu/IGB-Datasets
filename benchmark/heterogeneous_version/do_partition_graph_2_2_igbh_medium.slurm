@@ -21,10 +21,4 @@ which python
 
 # If there is argument then pass it as --dataset
 # supported datasets involve mag240m, igbhlarge
-if [ "$#" -eq 0 ]
-then
-    # The dataset is by default igbh-full
-    catchsegv python -m benchmark.do_partition_graph --num_parts=2 --num_trainers_per_machine=2
-else
-    catchsegv python -m benchmark.do_partition_graph --num_parts=2 --num_trainers_per_machine=2 --dataset=$1
-fi
+catchsegv python -m benchmark.heterogeneous_version.partition_graph --num_parts=2 --num_trainers_per_machine=2 --dataset=igbhmedium --output=out_single_dataset_heterogeneous_version_igbhmedium_2_2

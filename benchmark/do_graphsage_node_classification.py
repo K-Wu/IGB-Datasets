@@ -12,8 +12,39 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import tqdm
-from dgl.nn.pytorch import GATConv
+from dgl.nn.pytorch import GATConv, HeteroGraphConv
+from dgl import apply_each
 
+
+class DistRGAT(nn.Module):
+    """Adapted from class GAT in /IGB-datasets/igb/models.py. Arguments of __init__ are renamed to unify with the DistSAGE class."""
+    def __init__(self, etypes, in_feats, n_hidden, n_classes, n_heads, n_layers=2, dropout=0.2):
+        super().__init__()
+        self.layers = nn.ModuleList()
+        self.layers.append(HeteroGraphConv({
+            etype: GATConv(in_feats, n_hidden // n_heads, n_heads)
+            for etype in etypes}))
+        for _ in range(n_layers-2):
+            self.layers.append(HeteroGraphConv({
+                etype: GATConv(n_hidden, n_hidden // n_heads, n_heads)
+                for etype in etypes}))
+        self.layers.append(HeteroGraphConv({
+            etype: GATConv(n_hidden, n_hidden // n_heads, n_heads)
+            for etype in etypes}))
+        self.dropout = nn.Dropout(dropout)
+        self.linear = nn.Linear(n_hidden, n_classes)
+
+    def forward(self, blocks, x):
+        h = x
+        for l, (layer, block) in enumerate(zip(self.layers, blocks)):
+            h = layer(block, h)
+            h = apply_each(h, lambda x: x.view(x.shape[0], x.shape[1] * x.shape[2]))
+            if l != len(self.layers) - 1:
+                h = apply_each(h, F.relu)
+                h = apply_each(h, self.dropout)
+        return self.linear(h['paper'])   
+
+      
 
 class DistGAT(nn.Module):
     """Adapted from class GAT in /IGB-datasets/igb/models.py. Arguments of __init__ are renamed to unify with the DistSAGE class."""
@@ -223,6 +254,7 @@ def evaluate(model, g, inputs, labels, val_nid, test_nid, batch_size, device):
 def run(args, device, data):
     """
     Train and evaluate DistSAGE.
+    The training uses the logic for heterogeneous GNNs when args.heterogeneous is set: in this case, the "paper" type nodes are to be predicted.
 
     Parameters
     ----------
@@ -239,35 +271,63 @@ def run(args, device, data):
     sampler = dgl.dataloading.NeighborSampler(
         [int(fanout) for fanout in args.fan_out.split(",")]
     )
-    dataloader = dgl.dataloading.DistNodeDataLoader(
-        g,
-        train_nid,
-        sampler,
-        batch_size=args.batch_size,
-        shuffle=True,
-        drop_last=False,
-    )
+    if args.heterogeneous:
+        dataloader = dgl.dataloading.DistNodeDataLoader(
+            g,
+            {"paper": train_nid},
+            sampler,
+            batch_size=args.batch_size,
+            shuffle=True,
+            drop_last=False,
+        )
+    else:
+        dataloader = dgl.dataloading.DistNodeDataLoader(
+            g,
+            train_nid,
+            sampler,
+            batch_size=args.batch_size,
+            shuffle=True,
+            drop_last=False,
+        )
     if args.model == "DistSAGE":
+        assert not args.heterogeneous
         model = DistSAGE(
             in_feats,
             args.num_hidden,
             n_classes,
-            args.num_layers,
+            args.n_layers,
             F.relu,
             args.dropout,
         )
     elif args.model == "DistGAT":
         print(f"{host_name} {g.rank()}: Using DistGAT model default parameters batch_size(2048) fanout (5,2,2,2) n_layers (4), hidden_dim 512, n_heads (4)", flush=True)
+        assert not args.heterogeneous
         assert args.batch_size == 2048
         assert args.fan_out == "5,2,2,2"
-        assert args.num_layers == 4
+        assert args.n_layers == 4
         assert args.num_hidden == 512
         model = DistGAT(
             in_feats,
             n_hidden = args.num_hidden,
             n_classes = n_classes,
             n_heads = 4,
-            n_layers = args.num_layers,
+            n_layers = args.n_layers,
+            dropout = args.dropout,
+        )
+    elif args.model == "DistRGAT":
+        print(f"{host_name} {g.rank()}: Using DistRGAT model default parameters batch_size(2048) fanout (5,2,2,2) n_layers (4), hidden_dim 512, n_heads (4)", flush=True)
+        assert args.heterogeneous
+        assert args.batch_size == 2048
+        assert args.fan_out == "5,2,2,2"
+        assert args.n_layers == 4
+        assert args.num_hidden == 512
+        model = DistRGAT(
+            g.etypes,
+            in_feats,
+            n_hidden = args.num_hidden,
+            n_classes = n_classes,
+            n_heads = 4,
+            n_layers = args.n_layers,
             dropout = args.dropout,
         )
     else:
@@ -303,21 +363,48 @@ def run(args, device, data):
         sampled_times_sampling = []
         sampled_times_movement = []
         sampled_times_training = []
-        sampled_step_beg = 1000
-        sampled_step_end = 1100
+        sampled_step_beg = 500 # 1
+        assert sampled_step_beg >=1, "sampled_step_beg must be at least 1 because we need to execute dataloader.set_print_times(g.rank()) in the previous step"
+        sampled_step_end = 600
         with model.join():
             for step, (input_nodes, seeds, blocks) in enumerate(dataloader):
                 tic_step = time.time()
                 sample_and_aggregate_time += tic_step - start  # KWU: Sample and aggregation time
                 # Slice feature and label.
-                batch_inputs = g.ndata["features"][input_nodes]
-                batch_labels = g.ndata["labels"][seeds].long()
-                num_seeds += len(blocks[-1].dstdata[dgl.NID])
-                num_inputs += len(blocks[0].srcdata[dgl.NID])
+                if args.heterogeneous:
+                    print("blocks", blocks, flush=True)
+                    print("blocks[-1]", blocks[-1], flush=True)
+                    print("blocks[0]", blocks[0], flush=True)
+                    print("blocks[-1].dstdata", blocks[-1].dstdata, flush=True)
+                    print("blocks[0].srcdata", blocks[0].srcdata, flush=True)
+                    print("input_ndoes", input_nodes, flush=True)
+                    print("seeds", seeds, flush=True)
+                    # batch_labels = blocks[-1].dstdata['labels']#['paper']
+                    # seeds = seeds["paper"]
+                    batch_inputs = {g.nodes[ntype].data["features"][input_nodes[ntype]] for ntype in g.ntypes}
+                    batch_labels = g.nodes["paper"].data["labels"][seeds['paper']].long()
+                    # number_train += seeds["paper"].shape[0]
+                    num_inputs += np.sum(
+                    [blocks[0].num_src_nodes(ntype) for ntype in blocks[0].ntypes]
+                    )
+                    num_seeds = np.sum([blocks[-1].num_dst_nodes(ntype) for ntype in blocks[-1].ntypes])
+                else:
+                    batch_inputs = g.ndata["features"][input_nodes]
+                    num_seeds += len(blocks[-1].dstdata[dgl.NID])
+                    num_inputs += len(blocks[0].srcdata[dgl.NID])
+                    batch_labels = g.ndata["labels"][seeds].long()
+                
                 # Move to target device.
                 blocks = [block.to(device) for block in blocks]
-                batch_inputs = batch_inputs.to(device)
-                batch_labels = batch_labels.to(device)
+                if args.heterogeneous:
+                    batch_inputs = {k: v.to(device) for k, v in batch_inputs.items()}
+                    #batch_labels = {k: v.to(device) for k, v in batch_labels.items()}
+                    batch_labels = batch_labels.to(device)
+                    print("batch_inputs", batch_inputs, flush=True)
+                    print("batch_labels", batch_labels, flush=True)
+                else:
+                    batch_inputs = batch_inputs.to(device)
+                    batch_labels = batch_labels.to(device)
                 # Compute loss and prediction.
                 start = time.time()
                 movement_time = start - tic_step # KWU: Movement time
@@ -346,9 +433,11 @@ def run(args, device, data):
                 
                 if step == sampled_step_beg - 1:
                     sampler.set_print_times()
+                    dataloader.set_print_times(g.rank())
                 if step == sampled_step_end:
                     # Exit the loop
                     sampler.reset_print_times()
+                    dataloader.reset_print_times()
                     break
                 # Print stats every args.log_every steps.
                 if (step + 1) % args.log_every == 0:
@@ -379,22 +468,23 @@ def run(args, device, data):
         epoch_time.append(toc - tic)
 
         # TODO: work on DistGAT.inference()
-        if (epoch % args.eval_every == 0 or epoch == args.num_epochs) and isinstance(model, DistGAT):
-            start = time.time()
-            val_acc, test_acc = evaluate(
-                model.module,
-                g,
-                g.ndata["features"],
-                g.ndata["labels"],
-                val_nid,
-                test_nid,
-                args.batch_size_eval,
-                device,
-            )
-            print(
-                f"Part {g.rank()}, Val Acc {val_acc:.4f}, "
-                f"Test Acc {test_acc:.4f}, time: {time.time() - start:.4f}", flush=True
-            )
+        if not args.heterogeneous:
+            if (epoch % args.eval_every == 0 or epoch == args.num_epochs) and isinstance(model, DistGAT):
+                start = time.time()
+                val_acc, test_acc = evaluate(
+                    model.module,
+                    g,
+                    g.ndata["features"],
+                    g.ndata["labels"],
+                    val_nid,
+                    test_nid,
+                    args.batch_size_eval,
+                    device,
+                )
+                print(
+                    f"Part {g.rank()}, Val Acc {val_acc:.4f}, "
+                    f"Test Acc {test_acc:.4f}, time: {time.time() - start:.4f}", flush=True
+                )
 
     return np.mean(epoch_time[-int(args.num_epochs * 0.8) :]), test_acc
 
@@ -421,59 +511,120 @@ def main(args):
 
     # Split train/val/test IDs for each trainer.
     pb = g.get_partition_book()
-    if "trainer_id" in g.ndata:
-        train_nid = dgl.distributed.node_split(
-            g.ndata["train_mask"],
-            pb,
-            force_even=True,
-            node_trainer_ids=g.ndata["trainer_id"],
-        )
-        val_nid = dgl.distributed.node_split(
-            g.ndata["val_mask"],\
-            pb,
-            force_even=True,
-            node_trainer_ids=g.ndata["trainer_id"],
-        )
-        test_nid = dgl.distributed.node_split(
-            g.ndata["test_mask"],
-            pb,
-            force_even=True,
-            node_trainer_ids=g.ndata["trainer_id"],
-        )
+    if args.heterogeneous:
+        if "trainer_id" in g.nodes["paper"].data:
+            train_nid = dgl.distributed.node_split(
+                g.nodes["paper"].data["train_mask"],
+                pb,
+                ntype="paper",
+                force_even=True,
+                node_trainer_ids=g.nodes["paper"].data["trainer_id"],
+            )
+            val_nid = dgl.distributed.node_split(
+                g.nodes["paper"].data["val_mask"],
+                pb,
+                ntype="paper",
+                force_even=True,
+                node_trainer_ids=g.nodes["paper"].data["trainer_id"],
+            )
+            test_nid = dgl.distributed.node_split(
+                g.nodes["paper"].data["test_mask"],
+                pb,
+                ntype="paper",
+                force_even=True,
+                node_trainer_ids=g.nodes["paper"].data["trainer_id"],
+            )
+        else:
+            train_nid = dgl.distributed.node_split(
+                g.nodes["paper"].data["train_mask"],
+                pb,
+                ntype="paper",
+                force_even=True,
+            )
+            val_nid = dgl.distributed.node_split(
+                g.nodes["paper"].data["val_mask"],
+                pb,
+                ntype="paper",
+                force_even=True,
+            )
+            test_nid = dgl.distributed.node_split(
+                g.nodes["paper"].data["test_mask"],
+                pb,
+                ntype="paper",
+                force_even=True,
+            )
     else:
-        train_nid = dgl.distributed.node_split(
-            g.ndata["train_mask"], pb, force_even=True
-        )
-        val_nid = dgl.distributed.node_split(
-            g.ndata["val_mask"], pb, force_even=True
-        )
-        test_nid = dgl.distributed.node_split(
-            g.ndata["test_mask"], pb, force_even=True
-        )
-    local_nid = pb.partid2nids(pb.partid).detach().numpy()
-    num_train_local = len(np.intersect1d(train_nid.numpy(), local_nid))
-    num_val_local = len(np.intersect1d(val_nid.numpy(), local_nid))
-    num_test_local = len(np.intersect1d(test_nid.numpy(), local_nid))
-    print(
-        f"{host_name} {g.rank()}: part {g.rank()}, train: {len(train_nid)} (local: {num_train_local}), "
-        f"val: {len(val_nid)} (local: {num_val_local}), "
-        f"test: {len(test_nid)} (local: {num_test_local})", flush=True
-    )
-    del local_nid
-    if args.num_gpus == 0:
+        if "trainer_id" in g.ndata:
+            train_nid = dgl.distributed.node_split(
+                g.ndata["train_mask"],
+                pb,
+                force_even=True,
+                node_trainer_ids=g.ndata["trainer_id"],
+            )
+            val_nid = dgl.distributed.node_split(
+                g.ndata["val_mask"],\
+                pb,
+                force_even=True,
+                node_trainer_ids=g.ndata["trainer_id"],
+            )
+            test_nid = dgl.distributed.node_split(
+                g.ndata["test_mask"],
+                pb,
+                force_even=True,
+                node_trainer_ids=g.ndata["trainer_id"],
+            )
+            local_nid = pb.partid2nids(pb.partid, "paper").detach().numpy()
+            print(
+                "part {}, train: {} (local: {}), val: {} (local: {}), test: {} (local: {})".format(
+                    g.rank(),
+                    len(train_nid),
+                    len(np.intersect1d(train_nid.numpy(), local_nid)),
+                    len(val_nid),
+                    len(np.intersect1d(val_nid.numpy(), local_nid)),
+                    len(test_nid),
+                    len(np.intersect1d(test_nid.numpy(), local_nid)),
+                )
+            )
+        else:
+            train_nid = dgl.distributed.node_split(
+                g.ndata["train_mask"], pb, force_even=True
+            )
+            val_nid = dgl.distributed.node_split(
+                g.ndata["val_mask"], pb, force_even=True
+            )
+            test_nid = dgl.distributed.node_split(
+                g.ndata["test_mask"], pb, force_even=True
+            )
+            local_nid = pb.partid2nids(pb.partid).detach().numpy()
+            num_train_local = len(np.intersect1d(train_nid.numpy(), local_nid))
+            num_val_local = len(np.intersect1d(val_nid.numpy(), local_nid))
+            num_test_local = len(np.intersect1d(test_nid.numpy(), local_nid))
+            print(
+                f"{host_name} {g.rank()}: part {g.rank()}, train: {len(train_nid)} (local: {num_train_local}), "
+                f"val: {len(val_nid)} (local: {num_val_local}), "
+                f"test: {len(test_nid)} (local: {num_test_local})", flush=True
+            )
+        del local_nid
+    if args.num_gpus <= 0:
         device = th.device("cpu")
     else:
         dev_id = g.rank() % args.num_gpus
         device = th.device("cuda:" + str(dev_id))
     n_classes = args.n_classes
     if n_classes == 0:
-        labels = g.ndata["labels"][np.arange(g.num_nodes())]
+        if args.heterogeneous:
+            labels = g.nodes["paper"].data["labels"][np.arange(g.num_nodes("paper"))]
+        else:
+            labels = g.ndata["labels"][np.arange(g.num_nodes())]
         n_classes = len(th.unique(labels[th.logical_not(th.isnan(labels))]))
         del labels
     print(f"{host_name} {g.rank()}: Number of classes: {n_classes}", flush=True)
 
     # Pack data.
-    in_feats = g.ndata["features"].shape[1]
+    if args.heterogeneous:
+        in_feats = g.nodes["paper"].data['features'][np.arange(g.num_nodes("paper"))].shape[1]
+    else:
+        in_feats = g.ndata["features"].shape[1]
     data = train_nid, val_nid, test_nid, in_feats, n_classes, g
 
 
@@ -504,7 +655,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--backend",
         type=str,
-        default="gloo",
+        default="nccl",
         help="pytorch distributed backend",
     )
     parser.add_argument(
@@ -515,7 +666,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--num_epochs", type=int, default=20)
     parser.add_argument("--num_hidden", type=int, default=16)
-    parser.add_argument("--num_layers", type=int, default=2)
+    parser.add_argument("--heterogeneous", action="store_true")
+    parser.add_argument("--n_layers", type=int, default=2)
     parser.add_argument("--fan_out", type=str, default="10,25")
     parser.add_argument("--batch_size", type=int, default=1000)
     parser.add_argument("--batch_size_eval", type=int, default=100000)
