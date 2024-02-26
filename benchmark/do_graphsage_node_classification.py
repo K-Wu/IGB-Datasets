@@ -352,10 +352,10 @@ def run(args, device, data):
         epoch += 1
         tic = time.time()
         # Various time statistics.
-        sample_and_aggregate_time = 0
-        forward_time = 0
-        backward_time = 0
-        update_time = 0
+        sample_and_aggregate_times = []
+        forward_times = []
+        backward_times = []
+        update_times = []
         num_seeds = 0
         num_inputs = 0
         start = time.time()
@@ -369,7 +369,7 @@ def run(args, device, data):
         with model.join():
             for step, (input_nodes, seeds, blocks) in enumerate(dataloader):
                 tic_step = time.time()
-                sample_and_aggregate_time += tic_step - start  # KWU: Sample and aggregation time
+                sample_and_aggregate_times.append(tic_step - start)  # KWU: Sample and aggregation time
                 # Slice feature and label.
                 if args.heterogeneous:
                     print("blocks", blocks, flush=True)
@@ -414,11 +414,11 @@ def run(args, device, data):
                 optimizer.zero_grad()
                 loss.backward()
                 compute_end = time.time()
-                forward_time += forward_end - start
-                backward_time += compute_end - forward_end
+                forward_times.append(forward_end - start)
+                backward_times.append(compute_end - forward_end)
 
                 optimizer.step()
-                update_time += time.time() - compute_end
+                update_times.append(time.time() - compute_end)
                 train_time = time.time() - start # KWU: Train time
 
                 step_t = time.time() - tic_step
@@ -426,10 +426,10 @@ def run(args, device, data):
                 iter_tput.append(len(blocks[-1].dstdata[dgl.NID]) / step_t)
 
                 if step >= sampled_step_beg and step < sampled_step_end:
-                    sampled_times_sampling.append(sample_and_aggregate_time)
+                    sampled_times_sampling.append(sample_and_aggregate_times[-1])
                     sampled_times_movement.append(movement_time)
                     sampled_times_training.append(train_time)
-                    print(f"{host_name} {g.rank()}: Part {g.rank()} | Epoch {epoch:05d} | Step {step:05d} | Sample + Aggregation Time {sample_and_aggregate_time:.4f} sec | Movement Time {movement_time:.4f} sec | Train Time {train_time:.4f} sec", flush=True)
+                    print(f"{host_name} {g.rank()}: Part {g.rank()} | Epoch {epoch:05d} | Step {step:05d} | Sample + Aggregation Time {sample_and_aggregate_times[-1]:.4f} sec | Movement Time {movement_time:.4f} sec | Train Time {train_time:.4f} sec", flush=True)
                 
                 if step == sampled_step_beg - 1:
                     sampler.set_print_times()
@@ -461,8 +461,8 @@ def run(args, device, data):
         toc = time.time()
         print(
             f"{host_name} {g.rank()}: Part {g.rank()}, Epoch Time(s): {toc - tic:.4f}, "
-            f"sample+data_copy: {sample_and_aggregate_time:.4f}, forward: {forward_time:.4f},"
-            f" backward: {backward_time:.4f}, update: {update_time:.4f}, "
+            f"sample+data_copy: {sum(sample_and_aggregate_times)/len(sample_and_aggregate_times):.4f}, forward: {sum(forward_times)/len(forward_times):.4f},"
+            f" backward: {sum(backward_times)/len(backward_times):.4f}, update: {sum(update_times)/len(update_times):.4f}, "
             f"#seeds: {num_seeds}, #inputs: {num_inputs}", flush=True
         )
         epoch_time.append(toc - tic)
