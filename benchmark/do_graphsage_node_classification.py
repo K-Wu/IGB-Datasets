@@ -51,10 +51,10 @@ class DistGAT(nn.Module):
     def __init__(self, in_feats, n_hidden, n_classes, n_heads, n_layers=2, dropout=0.2):
         super(DistGAT, self).__init__()
         self.layers = nn.ModuleList()
-        self.layers.append(GATConv(in_feats, n_hidden, n_heads))
+        self.layers.append(GATConv(in_feats, n_hidden, n_heads, allow_zero_in_degree=True))
         for _ in range(n_layers-2):
-            self.layers.append(GATConv(n_hidden * n_heads, n_hidden, n_heads))
-        self.layers.append(GATConv(n_hidden * n_heads, n_classes, n_heads))
+            self.layers.append(GATConv(n_hidden * n_heads, n_hidden, n_heads, allow_zero_in_degree=True))
+        self.layers.append(GATConv(n_hidden * n_heads, n_classes, n_heads, allow_zero_in_degree=True))
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, blocks, x):

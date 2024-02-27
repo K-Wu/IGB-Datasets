@@ -116,7 +116,7 @@ def load_ogb(dataset):
         hg.nodes["paper"].data["labels"] = paper_labels
         return hg
     else:
-        raise ("Do not support other ogbn datasets.")
+        raise ValueError("Do not support other ogbn datasets.")
 
 
 if __name__ == "__main__":

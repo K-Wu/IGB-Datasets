@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=167:59:00
+#SBATCH --time=10:59:00
 #SBATCH -p a100
 #SBATCH --exclusive
 #SBATCH --ntasks-per-node=5
