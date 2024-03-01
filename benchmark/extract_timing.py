@@ -2,7 +2,8 @@ import re
 from typing import List
 
 def split_single_line(line:str) -> List[str]:
-    line_patterns = [".*? \d*: \[DistDataLoader _request_nest_batch\] Sampling: [\d\.]* sec, Aggregation time: [\d\.]* sec",
+    line_patterns = [".*? \d*: Part \d \| Epoch \d* \| Step \d* \| Loss [\d.]* \| Train Acc [\d.]* \| Speed \(samples\/sec\) [\d.]* \| GPU [\d.]* MB \| Mean step time [\d.]* s",
+    ".*? \d*: \[DistDataLoader _request_nest_batch\] Sampling: [\d\.]* sec, Aggregation time: [\d\.]* sec",
     ".*? \d*: \[sample_blocks\] Sampling: [\d\.]* sec, Aggregation: [\d\.]* sec",
     ".*? \d*: Part \d \| Epoch \d* \| Step \d* \| Sample \+ Aggregation Time [\d.]* sec \| Movement Time [\d.]* sec \| Train Time [\d.]* sec"]
     aggregated_pattern = "|".join(line_patterns)
@@ -74,8 +75,8 @@ def extract_timing(filename: str,epoch_to_collect = 1, num_steps_to_collect_at_t
                 part_epoch_step_logs[(node, partition_id)][epoch_idx][step_idx]['movement_time'] = movement_time
                 part_epoch_step_logs[(node, partition_id)][epoch_idx][step_idx]['train_time'] = train_time
                 part_unknown_epoch_step_logs.pop((node, partition_id))
-        except Exception as e:
-            print(f"[{e}] Unable to parse: {line}")
+        except Exception as err:
+            print(f"[{err}] Unable to parse: {line}")
 
     # Calculate the average metrics for the specified epoch and number of steps
     avg_metrics: dict[tuple[str, int], dict[str, float]] = dict()
