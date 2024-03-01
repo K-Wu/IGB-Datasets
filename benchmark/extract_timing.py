@@ -2,6 +2,7 @@ import re
 from typing import List
 
 def split_single_line(line:str) -> List[str]:
+    """Due to the asynchronous nature of the output, sometimes two lines are combined into one. This function splits the line into multiple lines."""
     line_patterns = [".*? \d*: Part \d \| Epoch \d* \| Step \d* \| Loss [\d.]* \| Train Acc [\d.]* \| Speed \(samples\/sec\) [\d.]* \| GPU [\d.]* MB \| Mean step time [\d.]* s",
     ".*? \d*: \[DistDataLoader _request_nest_batch\] Sampling: [\d\.]* sec, Aggregation time: [\d\.]* sec",
     ".*? \d*: \[sample_blocks\] Sampling: [\d\.]* sec, Aggregation: [\d\.]* sec",
