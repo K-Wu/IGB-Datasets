@@ -1,7 +1,4 @@
-# Launcher for use in slurm script (srun)
-# From https://github.com/dmlc/dgl/blob/e181ef15d7df465af713472ddcc8fba9b233f708/tools/launch.py
-# Usage: https://docs.dgl.ai/tutorials/dist/1_node_classification.html#launch-the-distributed-training-job
-"""Launching tool for use in slurm script for DGL distributed training"""
+"""Launching tool for DGL distributed training"""
 import argparse
 import json
 import logging
@@ -10,33 +7,18 @@ import os
 import queue
 import re
 import signal
+import stat
 import subprocess
 import sys
 import time
-# from functools import partial
+from functools import partial
 from threading import Thread
-from typing import Optional, List, Dict
+from typing import Optional
 
 
-def get_ip_address_to_node_mapping() -> Dict[str, str]:
-    # Get node lists via scontrol show hostnames $SLURM_JOB_NODELIST
-    node_lists = subprocess.check_output(
-        f"scontrol show hostnames {os.environ['SLURM_JOB_NODELIST']}",
-        shell=True,
-        stderr=subprocess.STDOUT,
-    ).decode("utf-8")
-    node_lists = node_lists.split("\n")
-    results = {}
-    for node in node_lists:
-        ip = subprocess.check_output("getent ahostsv4 "+ node+ "-ib0 | grep STREAM | head -n 1  | awk '{ print $1 }'", shell=True, stderr=subprocess.STDOUT).decode("utf-8").strip()
-        results[ip] = node
-    return results
-
-
-
-def cleanup_proc(get_all_remaining_steps, conn):
+def cleanup_proc(get_all_remote_pids, conn):
     """This process tries to clean up the remote training tasks."""
-    print("cleanup process runs")
+    print("cleanupu process runs")
     # This process should not handle SIGINT.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
@@ -45,29 +27,70 @@ def cleanup_proc(get_all_remaining_steps, conn):
     if data == "exit":
         sys.exit(0)
     else:
-        # CHANGE: get step ids instead get_all_remote_pids -> get_all_remaining_steps
-        remaining_steps = get_all_remaining_steps()
+        remote_pids = get_all_remote_pids()
         # Otherwise, we need to ssh to each machine and kill the training jobs.
-        for step in remaining_steps:
-            # CHANGE: kill_process -> kill_step
-            kill_step(step)
+        for (ip, port), pids in remote_pids.items():
+            kill_process(ip, port, pids)
     print("cleanup process exits")
 
-def kill_step(step_id):
-    """kill the specified step via scancel"""
-    job_id = os.environ.get("SLURM_JOB_ID")
-    cmd = "scancel --signal=KILL {}.{}".format(job_id, step_id)
-    try:
-        subprocess.run(cmd, shell=True)
-    except Exception as e:
-        print("Error when killing step {}: {}".format(step_id, e))
 
 
+def kill_process(ip, port, pids):
+    """ssh to a remote machine and kill the specified processes."""
+    curr_pid = os.getpid()
+    killed_pids = []
+    # If we kill child processes first, the parent process may create more again. This happens
+    # to Python's process pool. After sorting, we always kill parent processes first.
+    pids.sort()
+    for pid in pids:
+        assert curr_pid != pid
+        print("kill process {} on {}:{}".format(pid, ip, port), flush=True)
+        cmd = '[ -d "/proc/{0}" ] && kill {0}'.format(pid)
+        kill_cmd = "srun --overlap -n 1 -N1 -w $(host {ip} | awk '{{print $5}}' | cut -d. -f1) bash -c {cmd}" \
+            .format(ip=ip, cmd=" 'kill {0} 2>/dev/null || echo Process was not running'".format(pid))
+        subprocess.run(kill_cmd, shell=True)
+        killed_pids.append(pid)
+    # It's possible that some of the processes are not killed. Let's try again.
+    for i in range(3):
+        killed_pids = get_killed_pids(ip, port, killed_pids)
+        if len(killed_pids) == 0:
+            break
+        else:
+            killed_pids.sort()
+            for pid in killed_pids:
+                print(
+                    "kill process {} on {}:{}".format(pid, ip, port), flush=True
+                )
+                kill_cmd = "srun --overlap -n 1 -N1 -w $(host {ip} | awk '{{print $5}}' | cut -d. -f1) bash -c {cmd}" \
+                .format(ip=ip, cmd=" 'kill -9 {0} 2>/dev/null || echo Process was not running'".format(pid))
+                subprocess.run(kill_cmd, shell=True)
 
+
+def get_killed_pids(ip, port, killed_pids):
+    """Get the process IDs that we want to kill but are still alive."""
+    killed_pids = [str(pid) for pid in killed_pids]
+    killed_pids = ",".join(killed_pids)
+    ps_cmd = "srun -s -n 1 -N1 -w $(host {ip} | awk '{{print $5}}' | cut -d. -f1) bash -c {cmd}" \
+        .format(ip=ip, cmd=" 'ps -p {} -h'".format(killed_pids))
+    res = subprocess.run(ps_cmd, shell=True, stdout=subprocess.PIPE)
+    pids = []
+    for p in res.stdout.decode("utf-8").split("\n"):
+        l = p.split()
+        if len(l) > 0:
+            pids.append(int(l[0]))
+    return pids
+
+
+SHM_MOUNT = []
 def execute_remote(
     cmd: str,
     state_q: queue.Queue,
     ip: str,
+    port: int,
+    workdir: str,
+    rundir: str,
+    username: Optional[str] = "",
+    cont_name: str = 'cont'
 ) -> Thread:
     """Execute command line on remote machine via ssh.
 
@@ -75,6 +98,7 @@ def execute_remote(
         cmd: User-defined command (udf) to execute on the remote host.
         state_q: A queue collecting Thread exit states.
         ip: The ip-address of the host to run the command on.
+        port: Port number that the host is listening on.
         thread_list:
         username: Optional. If given, this will specify a username to use when issuing commands over SSH.
             Useful when your infra requires you to explicitly specify a username to avoid permission issues.
@@ -83,17 +107,34 @@ def execute_remote(
         thread: The Thread whose run() is to run the `cmd` on the remote host. Returns when the cmd completes
             on the remote host.
     """
-    # CHANGE: switch ssh execute to srun -w=<nodelist>
-    # Construct srun command that executes `cmd` on the select node as one process
-    srun_cmd = "srun -w {node_id} -ln1 --overlap {cmd}".format(
-        node_id=get_ip_address_to_node_mapping()[ip],
-        cmd=cmd,
-    )
+    ip_prefix = ""
+    if username:
+        ip_prefix += "{username}@".format(username=username)
 
+    # Construct ssh command that executes `cmd` on the remote host
+    wks = workdir
+    rdir = rundir
+    global SHM_MOUNT
+    shm = ''
+    if ip not in SHM_MOUNT: # mount /dev/shm with huge-page to reduce overhead
+        shm = ',tmpfs:/dev/shm:x-create=dir+huge=always'
+    if ip == '127.0.0.1':
+        ssh_cmd = f"cd {wks}; bash -c '{cmd}'"
+    else:
+        ssh_cmd = "srun --overlap -n 1 -N1 -w $(host {ip} | awk '{{print $5}}' | cut -d. -f1) --container-mounts={wks}:{wks},{rdir}:{rdir}{shm} \
+            --container-name={cont} --container-workdir={rdir} bash -c '{cmd}'".format(
+            ip=ip,
+            wks=wks,
+            rdir=rdir,
+            cont=cont_name,
+            cmd=cmd,
+            shm=shm
+        )
+    print(ssh_cmd)
     # thread func to run the job
-    def run(srun_cmd, state_q):
+    def run(ssh_cmd, state_q):
         try:
-            subprocess.check_call(srun_cmd, shell=True)
+            subprocess.check_call(ssh_cmd, shell=True)
             state_q.put(0)
         except subprocess.CalledProcessError as err:
             print(f"Called process error {err}")
@@ -104,7 +145,52 @@ def execute_remote(
     thread = Thread(
         target=run,
         args=(
-            srun_cmd,
+            ssh_cmd,
+            state_q,
+        ),
+    )
+    thread.setDaemon(True)
+    thread.start()
+    # sleep for a while in case of ssh is rejected by peer due to busy connection
+    if ip not in SHM_MOUNT:
+        time.sleep(3)
+    SHM_MOUNT.append(ip)
+    return thread
+
+def execute_remote_all_procs(
+    wks: str,
+    rdir: str,
+    cmd: str,
+    state_q: queue.Queue,
+    num_local_procs: int,
+    cont_name: str = 'cont',
+) -> Thread:
+
+
+    ssh_cmd = "srun -l --overlap --ntasks-per-node={num_local_procs} --container-mounts={wks}:{wks},{rdir}:{rdir} \
+        --container-workdir={rdir} --container-name={cont} bash -c '{cmd}'".format(
+        num_local_procs=num_local_procs,
+        wks=wks,
+        rdir=rdir,
+        cont=cont_name,
+        cmd=cmd,
+    )
+    print(ssh_cmd)
+    # thread func to run the job
+    def run(ssh_cmd, state_q):
+        try:
+            subprocess.check_call(ssh_cmd, shell=True)
+            state_q.put(0)
+        except subprocess.CalledProcessError as err:
+            print(f"Called process error {err}")
+            state_q.put(err.returncode)
+        except Exception:
+            state_q.put(-1)
+
+    thread = Thread(
+        target=run,
+        args=(
+            ssh_cmd,
             state_q,
         ),
     )
@@ -114,22 +200,49 @@ def execute_remote(
     time.sleep(0.2)
     return thread
 
+def get_remote_pids(ip, port, cmd_regex):
+    """Get the process IDs that run the command in the remote machine."""
+    pids = []
+    curr_pid = os.getpid()
+    # Here we want to get the python processes. We may get some ssh processes, so we should filter them out.
+    ps_cmd = "srun -s -n 1 -N1 -w $(host {ip} | awk '{{print $5}}' | cut -d. -f1) bash -c {cmd}" \
+        .format(ip=ip, cmd=" 'ps -aux | grep python'")
+    res = subprocess.run(ps_cmd, shell=True, stdout=subprocess.PIPE)
+    for p in res.stdout.decode("utf-8").split("\n"):
+        l = p.split()
+        if len(l) < 2:
+            continue
+        # We only get the processes that run the specified command.
+        res = re.search(cmd_regex, p)
+        if res is not None and int(l[1]) != curr_pid:
+            pids.append(l[1])
 
-def get_all_remaining_steps() -> List[int]:
-    """Get the still-running srun steps."""
-    # List all active jobs via sacct -j40313 --format=JobID,Start,End,Elapsed,NCPUS
-    # All active jobs are 1) with JobID in the form of 40313.<step_id> and 2) with End=Unknown
-    sacct_output = subprocess.check_output(
-        "sacct --format=JobID,Start,End,Elapsed,NCPUS",
-        shell=True,
-        stderr=subprocess.STDOUT,
-    ).decode("utf-8")
-    results = []
-    for line in sacct_output.split("\n"):
-        jobid, start, end, elapsed, ncpus = line.strip().split()
-        if jobid.startswith(os.environ["SLURM_JOB_ID"] + ".") and end.lower() == "unknown":
-            results.append(jobid.split(".")[1])
-    return results
+    pid_str = ",".join([str(pid) for pid in pids])
+    ps_cmd = "srun -s -n 1 -N1 -w $(host {ip} | awk '{{print $5}}' | cut -d. -f1) bash -c {cmd}".format(ip=ip, cmd=" 'pgrep -P {}'" \
+        .format(pid_str))
+    res = subprocess.run(ps_cmd, shell=True, stdout=subprocess.PIPE)
+    pids1 = res.stdout.decode("utf-8").split("\n")
+    all_pids = []
+    for pid in set(pids + pids1):
+        if pid == "" or int(pid) == int(curr_pid):
+            continue
+        all_pids.append(int(pid))
+    all_pids.sort()
+    return all_pids
+
+
+def get_all_remote_pids(hosts, ssh_port, udf_command):
+    """Get all remote processes."""
+    remote_pids = {}
+    for node_id, host in enumerate(hosts):
+        ip, _ = host
+        # When creating training processes in remote machines, we may insert some arguments
+        # in the commands. We need to use regular expressions to match the modified command.
+        cmds = udf_command.split()[2:]
+        new_udf_command = " .*".join(cmds)
+        pids = get_remote_pids(ip, ssh_port, new_udf_command)
+        remote_pids[(ip, ssh_port)] = pids
+    return remote_pids
 
 
 def construct_torch_dist_launcher_cmd(
@@ -153,7 +266,7 @@ def construct_torch_dist_launcher_cmd(
         cmd_str.
     """
     torch_cmd_template = (
-        "-m torch.distributed.run "
+        "torchrun "
         "--nproc_per_node={nproc_per_node} "
         "--nnodes={nnodes} "
         "--node_rank={node_rank} "
@@ -169,18 +282,20 @@ def construct_torch_dist_launcher_cmd(
     )
 
 
-def wrap_udf_in_torch_dist_launcher(
+def wrap_udf_in_dist_launcher(
     udf_command: str,
     num_trainers: int,
     num_nodes: int,
     node_rank: int,
     master_addr: str,
     master_port: int,
+    launch_agent: str,
+    run_dir: str,
 ) -> str:
-    """Wraps the user-defined function (udf_command) with the torch.distributed.run module.
+    """Wraps the user-defined function (udf_command) with the torch.distributed.launch module.
 
      Example: if udf_command is "python3 run/some/trainer.py arg1 arg2", then new_df_command becomes:
-         "python3 -m torch.distributed.run <TORCH DIST ARGS> run/some/trainer.py arg1 arg2
+         "python3 -m torch.distributed.launch <TORCH DIST ARGS> run/some/trainer.py arg1 arg2
 
     udf_command is assumed to consist of pre-commands (optional) followed by the python launcher script (required):
     Examples:
@@ -203,13 +318,14 @@ def wrap_udf_in_torch_dist_launcher(
     Returns:
 
     """
-    torch_dist_cmd = construct_torch_dist_launcher_cmd(
-        num_trainers=num_trainers,
-        num_nodes=num_nodes,
-        node_rank=node_rank,
-        master_addr=master_addr,
-        master_port=master_port,
-    )
+    if launch_agent == 'pytorch':
+        torch_dist_cmd = construct_torch_dist_launcher_cmd(
+            num_trainers=num_trainers,
+            num_nodes=num_nodes,
+            node_rank=node_rank,
+            master_addr=master_addr,
+            master_port=master_port,
+        )
     # Auto-detect the python binary that kicks off the distributed trainer code.
     # Note: This allowlist order matters, this will match with the FIRST matching entry. Thus, please add names to this
     #       from most-specific to least-specific order eg:
@@ -232,16 +348,31 @@ def wrap_udf_in_torch_dist_launcher(
             python_bin = candidate_python_bin
             break
 
+    if launch_agent == 'srun':
+        torch_dist_cmd = python_bin
+
     # transforms the udf_command from:
     #     python path/to/dist_trainer.py arg0 arg1
     # to:
-    #     python -m torch.distributed.run [DIST TORCH ARGS] path/to/dist_trainer.py arg0 arg1
+    #     python -m torch.distributed.launch [DIST TORCH ARGS] path/to/dist_trainer.py arg0 arg1
     # Note: if there are multiple python commands in `udf_command`, this may do the Wrong Thing, eg launch each
     #       python command within the torch distributed launcher.
+    # --kill=9 --capture-range=cudaProfilerApi
+    #  --nic-metrics=true
+    prof = ''
+    model = os.environ.get('PROFILE_DIR', '')
+    if model == '':
+        model = run_dir
+    prof_name = r'gnn_profile_${SLURM_JOBID}_%q{SLURM_NODEID}_%q{SLURM_PROCID}'
+    path = f'{model}/{prof_name}'
+    if os.environ.get('PROFILE', '0') == '1':
+        prof = f'nsys profile  --capture-range=cudaProfilerApi --capture-range-end=stop --sample=none --cpuctxsw=none \
+            --trace=cuda,nvtx  --force-overwrite true --output {path} '
     new_udf_command = udf_command.replace(
-        python_bin, f"{python_bin} {torch_dist_cmd}"
+        python_bin, f"{prof} {torch_dist_cmd}"
     )
 
+    print('new udf cmd', new_udf_command)
     return new_udf_command
 
 
@@ -253,6 +384,7 @@ def construct_dgl_server_env_vars(
     ip_config: str,
     num_servers: int,
     graph_format: str,
+    keep_alive: bool,
     pythonpath: Optional[str] = "",
 ) -> str:
     """Constructs the DGL server-specific env vars string that are required for DGL code to behave in the correct
@@ -269,6 +401,8 @@ def construct_dgl_server_env_vars(
             Relative path to workspace.
         num_servers:
         graph_format:
+        keep_alive:
+            Whether to keep server alive when clients exit
         pythonpath: Optional. If given, this will pass this as PYTHONPATH.
 
     Returns:
@@ -284,6 +418,7 @@ def construct_dgl_server_env_vars(
         "DGL_IP_CONFIG={DGL_IP_CONFIG} "
         "DGL_NUM_SERVER={DGL_NUM_SERVER} "
         "DGL_GRAPH_FORMAT={DGL_GRAPH_FORMAT} "
+        "DGL_KEEP_ALIVE={DGL_KEEP_ALIVE} "
         "{suffix_optional_envvars}"
     )
     suffix_optional_envvars = ""
@@ -298,6 +433,7 @@ def construct_dgl_server_env_vars(
         DGL_IP_CONFIG=ip_config,
         DGL_NUM_SERVER=num_servers,
         DGL_GRAPH_FORMAT=graph_format,
+        DGL_KEEP_ALIVE=int(keep_alive),
         suffix_optional_envvars=suffix_optional_envvars,
     )
 
@@ -413,6 +549,79 @@ def wrap_cmd_with_extra_envvars(cmd: str, env_vars: list) -> str:
     return wrap_cmd_with_local_envvars(cmd, env_vars)
 
 
+g_monitor_file = None
+g_group_id = 0
+
+
+def has_alive_servers(args):
+    """Check whether there exists alive servers.
+
+    For each group of long live servers, a monitor file named
+    'dgl_dist_monitor_{args.server_name}' is created under '/tmp/' directory.
+    We check the existence of this monitor file to determine whether to
+    launch new servers or utilize the existing alive ones. If there
+    exist alive servers, we obtain availale group ID from the monitor
+    file which could be used in current client groups.
+
+    Returns
+    -------
+    bool
+        indicates whether there exists alive servers.
+    """
+    if args.server_name is None:
+        return False
+    global g_monitor_file
+    global g_group_id
+    monitor_file = "/tmp/dgl_dist_monitor_" + args.server_name
+    from filelock import FileLock
+
+    lock = FileLock(monitor_file + ".lock")
+    with lock:
+        next_group_id = None
+        ret = os.path.exists(monitor_file)
+        if ret:
+            print(
+                "Monitor file for alive servers already exist: {}.".format(
+                    monitor_file
+                )
+            )
+            lines = [line.rstrip("\n") for line in open(monitor_file)]
+            g_group_id = int(lines[0])
+            next_group_id = g_group_id + 1
+        if not ret and args.keep_alive:
+            next_group_id = 1
+            print(
+                "Monitor file for alive servers is created: {}.".format(
+                    monitor_file
+                )
+            )
+            g_monitor_file = monitor_file
+        if next_group_id is not None:
+            with open(monitor_file, "w") as f:
+                f.write(str(next_group_id))
+    return ret
+
+
+def clean_alive_servers():
+    """Remove keep alive related files"""
+    global g_monitor_file
+    try:
+        if g_monitor_file is not None:
+            os.remove(g_monitor_file)
+            os.remove(g_monitor_file + ".lock")
+            print(
+                "Monitor file for alive servers is removed: {}.".format(
+                    g_monitor_file
+                )
+            )
+    except:
+        print(
+            "Failed to delete monitor file for alive servers: {}.".format(
+                g_monitor_file
+            )
+        )
+
+
 def get_available_port(ip):
     """Get available port with specified ip."""
     import socket
@@ -434,12 +643,12 @@ def submit_jobs(args, udf_command, dry_run=False):
         )
     servers_cmd = []
     clients_cmd = []
-    hosts = [] # TODO: change this to node id
+    hosts = []
     thread_list = []
     server_count_per_machine = 0
 
     # Get the IP addresses of the cluster.
-    ip_config = os.path.join(args.workspace, args.ip_config)
+    ip_config = os.path.join(args.rundir, args.ip_config)
     with open(ip_config) as f:
         for line in f:
             result = line.strip().split()
@@ -467,35 +676,45 @@ def submit_jobs(args, udf_command, dry_run=False):
     state_q = queue.Queue()
     tot_num_clients = args.num_trainers * (1 + args.num_samplers) * len(hosts)
     # launch server tasks
-    server_env_vars = construct_dgl_server_env_vars(
-        num_samplers=args.num_samplers,
-        num_server_threads=args.num_server_threads,
-        tot_num_clients=tot_num_clients,
-        part_config=args.part_config,
-        ip_config=args.ip_config,
-        num_servers=args.num_servers,
-        graph_format=args.graph_format,
-        pythonpath=os.environ.get("PYTHONPATH", ""),
-    )
-    for i in range(len(hosts) * server_count_per_machine):
-        ip, _ = hosts[int(i / server_count_per_machine)]
-        server_env_vars_cur = f"{server_env_vars} DGL_SERVER_ID={i}"
-        cmd = wrap_cmd_with_local_envvars(udf_command, server_env_vars_cur)
-        cmd = (
-            wrap_cmd_with_extra_envvars(cmd, args.extra_envs)
-            if len(args.extra_envs) > 0
-            else cmd
+    if not has_alive_servers(args):
+        server_env_vars = construct_dgl_server_env_vars(
+            num_samplers=args.num_samplers,
+            num_server_threads=args.num_server_threads,
+            tot_num_clients=tot_num_clients,
+            part_config=args.part_config,
+            ip_config=args.ip_config,
+            num_servers=args.num_servers,
+            graph_format=args.graph_format,
+            keep_alive=args.keep_alive,
+            pythonpath=os.environ.get("PYTHONPATH", ""),
         )
-        cmd = "cd " + str(args.workspace) + "; " + cmd
-        servers_cmd.append(cmd)
-        if not dry_run:
-            thread_list.append(
-                execute_remote(
-                    cmd,
-                    state_q,
-                    ip,
-                )
+        for i in range(len(hosts) * server_count_per_machine):
+            ip, _ = hosts[int(i / server_count_per_machine)]
+            server_env_vars_cur = f"{server_env_vars} DGL_SERVER_ID={i}"
+            cmd = wrap_cmd_with_local_envvars(udf_command, server_env_vars_cur)
+            cmd = (
+                wrap_cmd_with_extra_envvars(cmd, args.extra_envs)
+                if len(args.extra_envs) > 0
+                else cmd
             )
+            #cmd = "cd " + str(args.workspace) + "; " + cmd
+            servers_cmd.append(cmd)
+            if not dry_run:
+                thread_list.append(
+                    execute_remote(
+                        cmd,
+                        state_q,
+                        ip,
+                        args.ssh_port,
+                        args.workspace,
+                        args.rundir,
+                        username=args.ssh_username,
+                        cont_name=args.container_name,
+                    )
+                )
+            time.sleep(1)
+    else:
+        print(f"Use running server {args.server_name}.")
 
     # launch client tasks
     client_env_vars = construct_dgl_client_env_vars(
@@ -508,54 +727,86 @@ def submit_jobs(args, udf_command, dry_run=False):
         num_omp_threads=os.environ.get(
             "OMP_NUM_THREADS", str(args.num_omp_threads)
         ),
-        group_id=0,
+        group_id=g_group_id,
         pythonpath=os.environ.get("PYTHONPATH", ""),
     )
 
     master_addr = hosts[0][0]
     master_port = get_available_port(master_addr)
-    for node_id, host in enumerate(hosts):
-        ip, _ = host
-        # Transform udf_command to follow torch's dist launcher format: `PYTHON_BIN -m torch.distributed.run ... UDF`
-        torch_dist_udf_command = wrap_udf_in_torch_dist_launcher(
+    time.sleep(1)
+    if args.client_launcher == 'pytorch':
+        for node_id, host in enumerate(hosts):
+            ip, _ = host
+            # Transform udf_command to follow torch's dist launcher format: `PYTHON_BIN -m torch.distributed.launch ... UDF`
+            torch_dist_udf_command = wrap_udf_in_dist_launcher(
+                udf_command=udf_command,
+                num_trainers=args.num_trainers,
+                num_nodes=len(hosts),
+                node_rank=node_id,
+                master_addr=master_addr,
+                master_port=master_port,
+                launch_agent='pytorch',
+                run_dir=args.rundir,
+            )
+            cmd = wrap_cmd_with_local_envvars(
+                torch_dist_udf_command, client_env_vars
+            )
+            cmd = (
+                wrap_cmd_with_extra_envvars(cmd, args.extra_envs)
+                if len(args.extra_envs) > 0
+                else cmd
+            )
+            clients_cmd.append(cmd)
+            if not dry_run:
+                thread_list.append(
+                    execute_remote(
+                        cmd, state_q, ip, args.ssh_port, args.workspace, args.rundir, username=args.ssh_username, \
+                        cont_name=args.container_name,
+                    )
+                )
+
+    if args.client_launcher == 'srun':
+        dist_udf_command = wrap_udf_in_dist_launcher(
             udf_command=udf_command,
             num_trainers=args.num_trainers,
             num_nodes=len(hosts),
-            node_rank=node_id,
+            node_rank=0,
             master_addr=master_addr,
             master_port=master_port,
+            launch_agent='srun',
+            run_dir=args.rundir,
         )
         cmd = wrap_cmd_with_local_envvars(
-            torch_dist_udf_command, client_env_vars
+            dist_udf_command, client_env_vars
         )
         cmd = (
             wrap_cmd_with_extra_envvars(cmd, args.extra_envs)
             if len(args.extra_envs) > 0
             else cmd
         )
-        cmd = "cd " + str(args.workspace) + "; " + cmd
+        #cmd = "cd " + str(args.workspace) + "; " + cmd
         clients_cmd.append(cmd)
         if not dry_run:
             thread_list.append(
-                execute_remote(
-                    cmd, state_q, ip
+                execute_remote_all_procs(
+                        args.workspace, args.rundir, cmd, state_q, args.num_trainers, args.container_name,
                 )
             )
-
     # return commands of clients/servers directly if in dry run mode
     if dry_run:
         return clients_cmd, servers_cmd
 
     # Start a cleanup process dedicated for cleaning up remote training jobs.
     conn1, conn2 = multiprocessing.Pipe()
-    #func = partial(get_all_remote_pids, hosts, udf_command)
-    process = multiprocessing.Process(target=cleanup_proc, args=(get_all_remaining_steps, conn1))
+    func = partial(get_all_remote_pids, hosts, args.ssh_port, udf_command)
+    process = multiprocessing.Process(target=cleanup_proc, args=(func, conn1))
     process.start()
 
     def signal_handler(signal, frame):
         logging.info("Stop launcher")
         # We need to tell the cleanup process to kill remote training jobs.
         conn2.send("cleanup")
+        clean_alive_servers()
         sys.exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
@@ -576,9 +827,16 @@ def submit_jobs(args, udf_command, dry_run=False):
         print("Task failed")
         sys.exit(-1)
 
-
 def main():
     parser = argparse.ArgumentParser(description="Launch a distributed job")
+    parser.add_argument("--ssh_port", type=int, default=22, help="SSH Port.")
+    parser.add_argument(
+        "--ssh_username",
+        default="",
+        help="Optional. When issuing commands (via ssh) to cluster, use the provided username in the ssh cmd. "
+        "Example: If you provide --ssh_username=bob, then the ssh command will be like: 'ssh bob@1.2.3.4 CMD' "
+        "instead of 'ssh 1.2.3.4 CMD'",
+    )
     parser.add_argument(
         "--workspace",
         type=str,
@@ -586,6 +844,20 @@ def main():
                         This is used to specify a destination location where \
                         the contents of current directory will be rsyncd",
     )
+    parser.add_argument(
+        "--rundir",
+        type=str,
+        help="Path of user directory of distributed tasks. \
+                        This is used to specify a run directory to store \
+                        any intermediate files generated per each run",
+    )
+    parser.add_argument(
+        "--client-launcher",
+        type=str,
+        choices=["pytorch", "srun"],
+        default="pytorch",
+        help="Launch all client (training) processes through [pytorch|srun].")
+
     parser.add_argument(
         "--num_trainers",
         type=int,
@@ -642,8 +914,31 @@ def main():
                         you can set the LD_LIBRARY_PATH and NCCL_DEBUG by adding: \
                         --extra_envs LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH NCCL_DEBUG=INFO ",
     )
+    parser.add_argument(
+        "--keep_alive",
+        action="store_true",
+        help="Servers keep alive when clients exit",
+    )
+    parser.add_argument(
+        "--server_name",
+        type=str,
+        help="Used to check whether there exist alive servers",
+    )
+    parser.add_argument(
+        "--container_name",
+        type=str,
+        default="cont",
+        help="Used to launch the script within an existing container with a specfic name",
+    )
     args, udf_command = parser.parse_known_args()
-    assert len(udf_command) == 1, "Please provide user command line."
+    if args.rundir is None:
+        args.rundir = args.workspace
+    if args.keep_alive:
+        assert (
+            args.server_name is not None
+        ), "Server name is required if '--keep_alive' is enabled."
+        print("Servers will keep alive even clients exit...")
+    assert len(udf_command) == 1, f"Please provide user command line, {udf_command}"
     assert (
         args.num_trainers is not None and args.num_trainers > 0
     ), "--num_trainers must be a positive number."
@@ -685,7 +980,7 @@ def main():
 
 
 if __name__ == "__main__":
-    raise NotImplementedError("This script has synchronization issues.")
     fmt = "%(asctime)s %(levelname)s %(message)s"
     logging.basicConfig(format=fmt, level=logging.INFO)
     main()
+
