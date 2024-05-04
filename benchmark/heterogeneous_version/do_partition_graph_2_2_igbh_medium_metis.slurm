@@ -21,4 +21,4 @@ which python
 
 # If there is argument then pass it as --dataset
 # supported datasets involve mag240m, igbhlarge
-catchsegv python -m benchmark.heterogeneous_version.partition_graph --num_parts=2 --num_trainers_per_machine=2 --dataset=igbhmedium --output=out_single_dataset_heterogeneous_version_igbhmedium_2_2 --part_method=metis
+catchsegv python -m benchmark.heterogeneous_version.do_partition_graph --num_parts=2 --num_trainers_per_machine=2 --dataset=igbhmedium --output=out_single_dataset_heterogeneous_version_igbhmedium_2_2 --part_method=metis

@@ -24,7 +24,7 @@ which python
 if [ "$#" -eq 0 ]
 then
     # The dataset is by default igbh-full
-    catchsegv python -m benchmark.heterogeneous_version.partition_graph --num_parts=2 --num_trainers_per_machine=2
+    catchsegv python -m benchmark.heterogeneous_version.do_partition_graph --num_parts=2 --num_trainers_per_machine=2
 else
-    catchsegv python -m benchmark.heterogeneous_version.partition_graph --num_parts=2 --num_trainers_per_machine=2 --dataset=$1
+    catchsegv python -m benchmark.heterogeneous_version.do_partition_graph --num_parts=2 --num_trainers_per_machine=2 --dataset=$1
 fi
