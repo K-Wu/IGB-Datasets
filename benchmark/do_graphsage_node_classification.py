@@ -303,8 +303,8 @@ def run(args, device, data):
         print(f"{host_name} {g.rank()}: Using DistGAT model default parameters batch_size(2048) fanout (5,2,2,2) n_layers (4), hidden_dim 512, n_heads (4)", flush=True)
         assert not args.heterogeneous
         assert args.batch_size == 2048
-        assert args.fan_out == "5,2,2,2"
-        assert args.n_layers == 4
+        assert args.fan_out == "5,2,2,2" or args.fan_out == "10,5,5"
+        assert args.n_layers == 4 or args.n_layers == 3
         assert args.num_hidden == 512
         model = DistGAT(
             in_feats,
@@ -318,9 +318,10 @@ def run(args, device, data):
         print(f"{host_name} {g.rank()}: Using DistRGAT model default parameters batch_size(2048) fanout (5,2,2,2) n_layers (4), hidden_dim 512, n_heads (4)", flush=True)
         assert args.heterogeneous
         assert args.batch_size == 2048
-        assert args.fan_out == "5,2,2,2"
-        assert args.n_layers == 4
-        assert args.num_hidden == 512
+        assert args.fan_out == "5,2,2,2" or args.fan_out == "10,5,5"
+        assert args.n_layers == 4 or args.n_layers == 3
+        if args.graph_name!="mag240m":
+            assert args.num_hidden == 512
         model = DistRGAT(
             g.etypes,
             in_feats,
@@ -363,25 +364,25 @@ def run(args, device, data):
         sampled_times_sampling = []
         sampled_times_movement = []
         sampled_times_training = []
-        sampled_step_beg = 500 # 1
+        sampled_step_beg =  1 # 500
         assert sampled_step_beg >=1, "sampled_step_beg must be at least 1 because we need to execute dataloader.set_print_times(g.rank()) in the previous step"
-        sampled_step_end = 600
+        sampled_step_end = 101 # 600
         with model.join():
             for step, (input_nodes, seeds, blocks) in enumerate(dataloader):
                 tic_step = time.time()
                 sample_and_aggregate_times.append(tic_step - start)  # KWU: Sample and aggregation time
                 # Slice feature and label.
                 if args.heterogeneous:
-                    print("blocks", blocks, flush=True)
-                    print("blocks[-1]", blocks[-1], flush=True)
-                    print("blocks[0]", blocks[0], flush=True)
-                    print("blocks[-1].dstdata", blocks[-1].dstdata, flush=True)
-                    print("blocks[0].srcdata", blocks[0].srcdata, flush=True)
-                    print("input_ndoes", input_nodes, flush=True)
-                    print("seeds", seeds, flush=True)
+                    # print("blocks", blocks, flush=True)
+                    # print("blocks[-1]", blocks[-1], flush=True)
+                    # print("blocks[0]", blocks[0], flush=True)
+                    # print("blocks[-1].dstdata", blocks[-1].dstdata, flush=True)
+                    # print("blocks[0].srcdata", blocks[0].srcdata, flush=True)
+                    # print("input_ndoes", input_nodes, flush=True)
+                    # print("seeds", seeds, flush=True)
                     # batch_labels = blocks[-1].dstdata['labels']#['paper']
                     # seeds = seeds["paper"]
-                    batch_inputs = {g.nodes[ntype].data["features"][input_nodes[ntype]] for ntype in g.ntypes}
+                    batch_inputs = {ntype: g.nodes[ntype].data["features"][input_nodes[ntype]] for ntype in g.ntypes}
                     batch_labels = g.nodes["paper"].data["labels"][seeds['paper']].long()
                     # number_train += seeds["paper"].shape[0]
                     num_inputs += np.sum(
@@ -400,8 +401,8 @@ def run(args, device, data):
                     batch_inputs = {k: v.to(device) for k, v in batch_inputs.items()}
                     #batch_labels = {k: v.to(device) for k, v in batch_labels.items()}
                     batch_labels = batch_labels.to(device)
-                    print("batch_inputs", batch_inputs, flush=True)
-                    print("batch_labels", batch_labels, flush=True)
+                    # print("batch_inputs", batch_inputs, flush=True)
+                    # print("batch_labels", batch_labels, flush=True)
                 else:
                     batch_inputs = batch_inputs.to(device)
                     batch_labels = batch_labels.to(device)
@@ -667,6 +668,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_epochs", type=int, default=20)
     parser.add_argument("--num_hidden", type=int, default=16)
     parser.add_argument("--heterogeneous", action="store_true")
+    parser.add_argument("--wholegraph", action="store_true")
     parser.add_argument("--n_layers", type=int, default=2)
     parser.add_argument("--fan_out", type=str, default="10,25")
     parser.add_argument("--batch_size", type=int, default=1000)
@@ -692,5 +694,20 @@ if __name__ == "__main__":
         help="Regenerate node features.",
     )
     args = parser.parse_args()
+
+    if args.wholegraph:
+        raise NotImplementedError
+        import torch.distributed as dist
+        from .DistDGL_WholeGraph.utils.wholegraph_launch import (
+            init_wholegraph,
+            parse_wholegraph_config,
+            create_wholegraph_dist_tensor,
+            is_wm_tensor,
+            wm_scatter
+        )
+        from .DistDGL_WholeGraph.utils.load_feature import (
+            load_wholegraph_distribute_feature_tensor,
+        )
+
     print(f"Arguments: {args}", flush=True)
     main(args)
