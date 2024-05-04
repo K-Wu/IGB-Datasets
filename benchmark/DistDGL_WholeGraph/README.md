@@ -1,5 +1,11 @@
 This folder is extracted from nvcr.io/nvidia/dgl:23.11-py3 /workspace/examples/wholegraph-examples/DistDGL-WholeGraph
 
+Use the following command to install WholeGraph.
+
+```
+pip install pylibwholegraph-cu12 --extra-index-url=https://pypi.nvidia.com
+```
+
 ## Distributed GNN Training with DistDGL and WholeGraph (DistDGL + WholeGraph)
 
 This example demonstrates the utilization of DistDGL for large-scale distributed (multi-node multi-GPU) GNN training, where graph features are managed by WholeMemory, and graph strucutre is managed by DistDGL ([distributed DGL](https://docs.dgl.ai/en/latest/api/python/dgl.distributed.html)). This example is built upon an official [DistDGL example](https://github.com/dmlc/dgl/blob/master/examples/distributed/graphsage/node_classification.py), adding WholeGraph support. Within the example, a GraphSAGE model is used for a node prediction task with ogbn-papers100M opensource dataset.
