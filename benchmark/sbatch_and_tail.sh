@@ -29,5 +29,8 @@ do
     sleep 5
 done
 
+# Store command to the output file
+echo "[sbatch_and_tail.sh] Executing command sbatch $@" >> my_output.$job_id.out
+
 # Now you can use $job_id for further processing if needed
 watch -n 5 tail -n 7 my_output.$job_id.out -n 7 my_output.$job_id.err
