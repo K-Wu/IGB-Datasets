@@ -445,9 +445,9 @@ def main(args):
         dev_id = th.cuda.current_device()
         device = th.device("cuda:" + str(dev_id))
         config_path = os.environ.get("DGL_CONF_PATH")
-        feat_dim, wg_path = parse_wholegraph_config(config_path)
+        feat_dim, wg_path = parse_wholegraph_config(config_path, args.dataset)
         node_feat_wm_embedding = load_wholegraph_distribute_feature_tensor(
-            feat_comm, feat_dim, wg_path, args
+            feat_comm, feat_dim, wg_path, args.dataset, args.wm_feat_location
         )
         # Pack data
         in_feats = node_feat_wm_embedding.shape[1]
@@ -495,6 +495,7 @@ if __name__ == "__main__":
         default=-1,
         help="number of gpus per node",
     )
+    parser.add_argument("--dataset", type=str, default="ogbn-papers100M")
     parser.add_argument("--num_epochs", type=int, default=20)
     parser.add_argument("--num_hidden", type=int, default=16)
     parser.add_argument("--num_layers", type=int, default=2)

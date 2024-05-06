@@ -382,6 +382,7 @@ def run(args, device, data):
                     # print("seeds", seeds, flush=True)
                     # batch_labels = blocks[-1].dstdata['labels']#['paper']
                     # seeds = seeds["paper"]
+                    # TODO: add wholegraph support according to L144 in benchmark/DistDGL_WholeGraph/node_classification.py
                     batch_inputs = {ntype: g.nodes[ntype].data["features"][input_nodes[ntype]] for ntype in g.ntypes}
                     batch_labels = g.nodes["paper"].data["labels"][seeds['paper']].long()
                     # number_train += seeds["paper"].shape[0]
@@ -390,6 +391,7 @@ def run(args, device, data):
                     )
                     num_seeds = np.sum([blocks[-1].num_dst_nodes(ntype) for ntype in blocks[-1].ntypes])
                 else:
+                    # TODO: add wholegraph support according to L144 in benchmark/DistDGL_WholeGraph/node_classification.py
                     batch_inputs = g.ndata["features"][input_nodes]
                     num_seeds += len(blocks[-1].dstdata[dgl.NID])
                     num_inputs += len(blocks[0].srcdata[dgl.NID])

@@ -4,20 +4,32 @@ import argparse
 import subprocess
 from typing import Any
 from dgl import DGLHeteroGraph
+from igb.dataloader import is_this_machine_bafs
+
 
 def construct_graph_attributes(g_hetero: DGLHeteroGraph) -> dict[str, Any]:
     g_attrs: dict[str, Any] = {}
-    g_attrs["is_homogeneous"] = g_hetero.is_homogeneous # (property)
-    g_attrs["ntypes"] = g_hetero.ntypes # (iterable)
-    g_attrs["canonical_etypes"] = g_hetero.canonical_etypes # (iterable)
-    g_attrs["etypes"] = g_hetero.etypes # (iterable)
+    g_attrs["is_homogeneous"] = g_hetero.is_homogeneous  # (property)
+    g_attrs["ntypes"] = g_hetero.ntypes  # (iterable)
+    g_attrs["canonical_etypes"] = g_hetero.canonical_etypes  # (iterable)
+    g_attrs["etypes"] = g_hetero.etypes  # (iterable)
 
-    g_attrs["get_ntype_id"] = {} # (dict. Keys are ntype from g.ntypes)
-    g_attrs["get_etype_id"] = {} # (dict. Keys are etype from g.canonial_etypes)
-    g_attrs["num_nodes"] = {} # (dict. Keys are ntype from g.ntypes, and total (""))
-    g_attrs["num_edges"] = {} # (dict. Keys are etype from g.canonial_etypes, and total (""))
-    g_attrs["nodes_data"] = {} # (dict. Keys are ntype from g.ntypes, and total (""))
-    g_attrs["edges_data"] = {} # (dict. Keys are etype from g.canonial_etypes, and total (""))
+    g_attrs["get_ntype_id"] = {}  # (dict. Keys are ntype from g.ntypes)
+    g_attrs["get_etype_id"] = (
+        {}
+    )  # (dict. Keys are etype from g.canonial_etypes)
+    g_attrs["num_nodes"] = (
+        {}
+    )  # (dict. Keys are ntype from g.ntypes, and total (""))
+    g_attrs["num_edges"] = (
+        {}
+    )  # (dict. Keys are etype from g.canonial_etypes, and total (""))
+    g_attrs["nodes_data"] = (
+        {}
+    )  # (dict. Keys are ntype from g.ntypes, and total (""))
+    g_attrs["edges_data"] = (
+        {}
+    )  # (dict. Keys are etype from g.canonial_etypes, and total (""))
 
     for ntype in g_hetero.ntypes:
         g_attrs["get_ntype_id"][ntype] = g_hetero.get_ntype_id(ntype)
@@ -32,6 +44,7 @@ def construct_graph_attributes(g_hetero: DGLHeteroGraph) -> dict[str, Any]:
 
     return g_attrs
 
+
 def assert_git_exists() -> None:
     """Check if git is installed and available in the path."""
     try:
@@ -40,6 +53,7 @@ def assert_git_exists() -> None:
         raise OSError(
             "Git is not installed. Please install git and try again."
         )
+
 
 def get_git_root_path() -> str:
     """Get the root path of the git repository, i.e., cupy-playground."""
@@ -57,28 +71,37 @@ def is_pwd_correct_for_benchmark():
     repo_in_dir: str = os.path.dirname(os.path.dirname(script_path))
     return pwd == repo_in_dir
 
+
 def get_numpy_file_shape(filename: str):
     import numpy as np
-    return np.load(filename, mmap_mode='r').shape
+
+    return np.load(filename, mmap_mode="r").shape
+
 
 # From: https://stackoverflow.com/questions/4984647/accessing-dict-keys-like-an-attribute
 class AttributeDict(dict):
     def __getattr__(self, attr):
         return self[attr]
+
     def __setattr__(self, attr, value):
         self[attr] = value
 
-def get_igbh_config() ->argparse.ArgumentParser:
+
+def get_igbh_config() -> argparse.ArgumentParser:
 
     args = AttributeDict()
-    args.path = '/u/kunwu2/projects/IGB-datasets/igb/igbh'
-    args.dataset_size = 'full'
+    if is_this_machine_bafs():
+        args.path = "/data/kunwu2/IGB-Datasets/igb/igbh"
+    else:
+        args.path = "/u/kunwu2/projects/IGB-datasets/igb/igbh"
+
+    args.dataset_size = "full"
     args.num_classes = 19
-    args.load_homo_graph=1
-    args.in_memory=1
-    args.dummy_feats=1
-    args.synthetic=1
-    args.all_in_edges=True
+    args.load_homo_graph = 1
+    args.in_memory = 1
+    args.dummy_feats = 1
+    args.synthetic = 1
+    args.all_in_edges = True
 
     # dataset = IGBHeteroDGLDataset(args)
     # g = dataset[0]
@@ -89,6 +112,7 @@ def get_igbh_config() ->argparse.ArgumentParser:
     # print()
 
     return args
+
 
 def get_igb_config() -> argparse.ArgumentParser:
     """IGB uses the same arguments as IGBH, and use a subset of the files on disk in IGBH"""

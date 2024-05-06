@@ -7,58 +7,33 @@ import torch as th
 import time
 
 from dgl.convert import to_homogeneous
-from .utils import get_igbh_config, get_igb_config, is_pwd_correct_for_benchmark, construct_graph_attributes
-from igb.dataloader import IGBHeteroDGLDatasetMassive, IGB260MDGLDataset, IGBHeteroDGLDataset
+from .utils import (
+    get_igb_config,
+    is_pwd_correct_for_benchmark,
+    construct_graph_attributes,
+)
+from igb.dataloader import IGB260MDGLDataset
 
-def _load_igbh(dataset_size: str, use_dummy_feats:bool = False):
-    args = get_igbh_config()
-    args.load_homo_graph = False
-    if dataset_size=="large":
-        args.dataset_size="large"
-    elif dataset_size == "medium":
-        args.dataset_size="medium"
-    elif dataset_size=="full":
-        pass
-    else:
-        raise ValueError(f"Unknown igbh dataset_size: {dataset_size}")
-    if not use_dummy_feats:
-        args.dummy_feats=0
-    print(args, flush=True)
-    if args.dummy_feats:
-        print("using dummy feats")
-    if dataset_size == "large" or dataset_size=="full":
-        data =  IGBHeteroDGLDatasetMassive(args)
-    else:
-        data = IGBHeteroDGLDataset(args)
-    g = data.graph
-    return g
 
-def load_igbh_large():
-    print("Loading igbh large dataset", flush=True)
-    return _load_igbh("large")
-
-def load_igbh600m():
-    return _load_igbh("full")
-
-def _load_igb(dataset_size: str,use_dummy_feats:bool = True):
+def _load_igb(dataset_size: str, use_dummy_feats: bool = True):
     args = get_igb_config()
-    if dataset_size =="medium":
+    if dataset_size == "medium":
         args.dataset_size = "medium"
-    elif dataset_size=="large":
-        args.dataset_size="large"
-    elif dataset_size=="full":
+    elif dataset_size == "large":
+        args.dataset_size = "large"
+    elif dataset_size == "full":
         pass
     else:
         raise ValueError(f"Unknown igb dataset_size: {dataset_size}")
     if not use_dummy_feats:
-        args.dummy_feats=0
+        args.dummy_feats = 0
     print(args, flush=True)
     if args.dummy_feats:
         print("using dummy feats")
     data = IGB260MDGLDataset(args)
     g = data.graph
-    g.ndata["features"] = g.ndata.pop('feat')
-    g.ndata["labels"] = g.ndata.pop('label')
+    g.ndata["features"] = g.ndata.pop("feat")
+    g.ndata["labels"] = g.ndata.pop("label")
     return g
 
 
@@ -67,28 +42,30 @@ def load_igb240m():
 
 
 def load_igb240m_medium():
-    return _load_igb("medium",use_dummy_feats=False)
+    return _load_igb("medium", use_dummy_feats=False)
+
 
 def load_reddit(self_loop=True):
     """Load reddit dataset."""
     from dgl.data import RedditDataset
+
     data = RedditDataset(self_loop=self_loop)
     g = data[0]
-    g.ndata["features"] = g.ndata.pop('feat')
-    g.ndata["labels"] = g.ndata.pop('label')
+    g.ndata["features"] = g.ndata.pop("feat")
+    g.ndata["labels"] = g.ndata.pop("label")
     return g, data.num_classes
 
-    
 
 def load_ogb(name, root="dataset"):
     """Load ogbn dataset."""
     from ogb.nodeproppred import DglNodePropPredDataset
+
     data = DglNodePropPredDataset(name=name, root=root)
     splitted_idx = data.get_idx_split()
     graph, labels = data[0]
     labels = labels[:, 0]
 
-    graph.ndata["features"] = graph.ndata.pop('feat')
+    graph.ndata["features"] = graph.ndata.pop("feat")
     graph.ndata["labels"] = labels
     num_labels = len(th.unique(labels[th.logical_not(th.isnan(labels))]))
 
@@ -110,6 +87,29 @@ def load_ogb(name, root="dataset"):
     return graph, num_labels
 
 
+def load_homogeneous_graph(dataset: str):
+    if (
+        dataset == "igbh600m"
+        or dataset == "igbhmedium"
+        or dataset == "igbhlarge"
+        or dataset == "mag240m"
+    ):
+        raise ValueError(
+            "Please use the graph partitioning and distributed training script in .heterogeneous_version"
+        )
+    elif dataset == "igb240m":
+        g = load_igb240m()
+    elif dataset == "igb240m_medium":
+        g = load_igb240m_medium()
+    elif dataset == "reddit":
+        g, _ = load_reddit()
+    elif dataset in ["ogbn-products", "ogbn-papers100M"]:
+        g, _ = load_ogb(dataset)
+    else:
+        raise ValueError(f"Unknown dataset: {dataset}")
+    return g
+
+
 if __name__ == "__main__":
     assert is_pwd_correct_for_benchmark(), (
         "Please run this script at the repository root path."
@@ -125,10 +125,16 @@ if __name__ == "__main__":
         help="datasets: igbh600m, igbhlarge, igb240m, igb240m_medium, reddit, ogbn-products, ogbn-papers100M",
     )
     argparser.add_argument(
-        "--num_parts", type=int, default=2, help="number of partitions (i.e. compute nodes in training)"
+        "--num_parts",
+        type=int,
+        default=2,
+        help="number of partitions (i.e. compute nodes in training)",
     )
     argparser.add_argument(
-        "--part_method", type=str, default="random", help="the partition method: random, metis"
+        "--part_method",
+        type=str,
+        default="random",
+        help="the partition method: random, metis",
     )
     argparser.add_argument(
         "--balance_train",
@@ -170,29 +176,19 @@ if __name__ == "__main__":
     )
     args = argparser.parse_args()
     if args.heterogeneous:
-        raise NotImplementedError("Please use the graph partitioning and distributed training script in .heterogeneous_version")
+        raise NotImplementedError(
+            "Please use the graph partitioning and distributed training script in .heterogeneous_version"
+        )
 
     start = time.time()
-    if args.dataset == "igbh600m":
-        g = load_igbh600m()
-    elif args.dataset == "igbhmedium":
-        g = _load_igbh("medium")
-    elif args.dataset == "igbhlarge":
-        g = load_igbh_large()
-    elif args.dataset == "igb240m":
-        g = load_igb240m()
-    elif args.dataset == "igb240m_medium":
-        g = load_igb240m_medium()
-    elif args.dataset == "reddit":
-        g, _ = load_reddit()
-    elif args.dataset in ["ogbn-products", "ogbn-papers100M"]:
-        g, _ = load_ogb(args.dataset)
-    elif args.dataset in "mag240m":
-        g, _ = load_ogb_lsc_mag_240m()
-    else:
-        raise RuntimeError(f"Unknown dataset: {args.dataset}")
+
+    g = load_homogeneous_graph(args.dataset)
+
     print(
-        "Load {} takes {:.3f} seconds".format(args.dataset, time.time() - start), flush=True
+        "Load {} takes {:.3f} seconds".format(
+            args.dataset, time.time() - start
+        ),
+        flush=True,
     )
     print("|V|={}, |E|={}".format(g.num_nodes(), g.num_edges()), flush=True)
     # Suppress the following print because it does not work for heterograph
@@ -214,7 +210,12 @@ if __name__ == "__main__":
         for key in g.ndata:
             sym_g.ndata[key] = g.ndata[key]
         g = sym_g
-    print("Converted to (or skipped the conversion of) undirected graph {:.3f}".format(time.time() - start), flush=True)
+    print(
+        "Converted to (or skipped the conversion of) undirected graph {:.3f}".format(
+            time.time() - start
+        ),
+        flush=True,
+    )
 
     # dgl.distributed.partition_graph(
     #     g,
@@ -230,16 +231,31 @@ if __name__ == "__main__":
     if args.memory_efficient_impl:
         if args.heterogeneous:
             # g_attrs needs to be passed to partition_graph. In case of heterogeneous graph, it should be from the original heterogeneous graph before conversion to homogeneous graph.
-            g_attrs = construct_graph_attributes(g) 
+            g_attrs = construct_graph_attributes(g)
         g = dgl.to_homogeneous(g)
         if not args.heterogeneous:
             # g_attrs needs to be passed to partition_graph. In case of homogeneous graph, it should be from the homogeneous graph.
-            g_attrs = construct_graph_attributes(g) 
+            g_attrs = construct_graph_attributes(g)
         print("Converted to homogeneous graph", flush=True)
         from .my_partition_graph import my_random_partition_graph
-        my_random_partition_graph(g, g_attrs, args.dataset, args.num_parts, "out_single_dataset")
+
+        my_random_partition_graph(
+            g, g_attrs, args.dataset, args.num_parts, "out_single_dataset"
+        )
     else:
         from dgl.distributed.partition import partition_graph
+
         start = time.time()
-        partition_graph(g, args.dataset, args.num_parts, "out_single_dataset_dgl_method", part_method = "random")
-        print("Partitioning graph takes {:.3f} seconds".format(time.time() - start), flush=True)
+        partition_graph(
+            g,
+            args.dataset,
+            args.num_parts,
+            "out_single_dataset_dgl_method",
+            part_method="random",
+        )
+        print(
+            "Partitioning graph takes {:.3f} seconds".format(
+                time.time() - start
+            ),
+            flush=True,
+        )

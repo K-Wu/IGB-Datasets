@@ -1,9 +1,8 @@
 """Utilities for launching wholegraph distributed tasks. """
 import os
-
+from typing import Union
 import os
 import json
-import torch
 import pylibwholegraph.torch as wgth
 
 import pylibwholegraph.binding.wholememory_binding as wmb
@@ -46,23 +45,60 @@ def init_wholegraph(args):
     global_comm = wgth.comm.get_global_communicator(args.wg_comm_backend)
     return global_comm
 
-# parse the config file to extract information like feature dimension and wholegraph feature file path
-def parse_wholegraph_config(config_path):
+def get_heterogeneous_node_num(config_path) -> dict[str, int]:
     with open(config_path) as f:
-        part_metadata = json.load(f)
-        assert "feature_store" in part_metadata, f"Key 'feature_store' needs to be in the config file for using wholegraph feature store."
-        assert "WholeGraph" in part_metadata["feature_store"], f"Unknow feature store manager. Only support WholeGraph for now"
-        config_dir = os.path.dirname(config_path)
-        wg_path = os.path.join(config_dir, part_metadata["feature_store"]["WholeGraph"])
+        metadata = json.load(f)
+        assert "num_nodes" in metadata, f"Key 'num_nodes' needs to be in the config file for using wholegraph feature store."
+        num_nodes = {}
+        for node_type in metadata["node_map"]:
+            num_nodes[node_type] = 0
+            for range_ in metadata["node_map"][node_type]:
+                # Each range is a list of [start, end] where start is inclusive and end is exclusive
+                num_nodes[node_type] += range_[1] - range_[0]
+        assert sum(num_nodes.values()) == metadata["num_nodes"], "Sum of node numbers in node_map does not match num_nodes in metadata"
+        return num_nodes
 
-    feat_dim = {}
-    with open(os.path.join(wg_path, "ogbn-papers100M_feat.json")) as f:
-        feat = json.load(f)
-        for feat_name in feat:
-            feat_dim[feat_name] = feat[feat_name]["shape"][1]
+# parse the config file to extract information like feature dimension and wholegraph feature file path
+def parse_wholegraph_config(config_path, dataset) -> tuple[Union[dict, int], str]:
+    try:
+        with open(config_path) as f:
+            part_metadata = json.load(f)
+            assert "feature_store" in part_metadata, f"Key 'feature_store' needs to be in the config file for using wholegraph feature store."
+            assert "WholeGraph" in part_metadata["feature_store"], f"Unknow feature store manager. Only support WholeGraph for now"
+            config_dir = os.path.dirname(config_path)
+            wg_dir = os.path.join(config_dir, part_metadata["feature_store"]["WholeGraph"])
+    except Exception as e:
+        # Get default location if config file does not specify
+        print("Config file did not specify the wg_features directory. Using default location for wholegraph feature store.")
+        wg_dir = os.path.join(config_dir, 'wg_features')
+    
+    assert os.path.exists(wg_dir), f"Wholegraph feature store not found at {wg_dir}"
 
-    return feat_dim[feat_name], wg_path
+    num_nodes = get_heterogeneous_node_num(config_path)
 
+    if len(num_nodes) > 1:
+        # Heterogeneous graph
+        feat_dim: dict[str, int] = {}
+        for node_type in num_nodes:
+            with open(os.path.join(wg_dir, "{}_{}_feat.json".format(dataset, node_type))) as f:
+                feat = json.load(f)
+                for feat_name in feat:
+                    assert feat_name == "features"
+                    feat_dim[node_type] = feat[feat_name]["shape"][1]
+        return feat_dim, wg_dir
+    else:
+        # Homogeneous graph
+        feat_last_dim_size: int = -1
+        with open(os.path.join(wg_dir, "{}_feat.json".format(dataset))) as f:
+            feat = json.load(f)
+            for feat_name in feat:
+                assert feat_name == "features"
+                # Get the last dimension as required by wholegraph
+                feat_last_dim_size = feat[feat_name]["shape"][1]
+        assert feat_last_dim_size > 0, "Feature dimension must be greater than 0"
+        return feat_last_dim_size, wg_dir
+
+# TODO: extend this to heterogeneous graph. This is not done yet since it is only used in evaluation and only used in the wholegraph example.
 # create a new wholegraph distributed tensor
 def create_wholegraph_dist_tensor(shape, dtype, location='cpu'):
     comm = wgth.comm.get_global_communicator()
