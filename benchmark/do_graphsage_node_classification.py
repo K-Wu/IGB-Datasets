@@ -14,7 +14,7 @@ import torch.optim as optim
 import tqdm
 from dgl.nn.pytorch import GATConv, HeteroGraphConv
 from dgl import apply_each
-
+import os
 
 class DistRGAT(nn.Module):
     """Adapted from class GAT in /IGB-datasets/igb/models.py. Arguments of __init__ are renamed to unify with the DistSAGE class."""
@@ -267,7 +267,12 @@ def run(args, device, data):
         number of classes, graph.
     """
     host_name = socket.gethostname()
-    train_nid, val_nid, test_nid, in_feats, n_classes, g = data
+    if args.use_wm:
+        train_nid, val_nid, test_nid, in_feats, n_classes, g, wm_features = data
+        if args.heterogeneous:
+            wm_features, num_features_offset = wm_features
+    else:
+        train_nid, val_nid, test_nid, in_feats, n_classes, g = data
     sampler = dgl.dataloading.NeighborSampler(
         [int(fanout) for fanout in args.fan_out.split(",")]
     )
@@ -383,7 +388,10 @@ def run(args, device, data):
                     # batch_labels = blocks[-1].dstdata['labels']#['paper']
                     # seeds = seeds["paper"]
                     # TODO: add wholegraph support according to L144 in benchmark/DistDGL_WholeGraph/node_classification.py
-                    batch_inputs = {ntype: g.nodes[ntype].data["features"][input_nodes[ntype]] for ntype in g.ntypes}
+                    if args.use_wm:
+                        raise NotImplementedError
+                    else:
+                        batch_inputs = {ntype: g.nodes[ntype].data["features"][input_nodes[ntype]] for ntype in g.ntypes}
                     batch_labels = g.nodes["paper"].data["labels"][seeds['paper']].long()
                     # number_train += seeds["paper"].shape[0]
                     num_inputs += np.sum(
@@ -392,7 +400,10 @@ def run(args, device, data):
                     num_seeds = np.sum([blocks[-1].num_dst_nodes(ntype) for ntype in blocks[-1].ntypes])
                 else:
                     # TODO: add wholegraph support according to L144 in benchmark/DistDGL_WholeGraph/node_classification.py
-                    batch_inputs = g.ndata["features"][input_nodes]
+                    if args.use_wm:
+                        batch_inputs = wm_features.gather(input_nodes.cuda())
+                    else:
+                        batch_inputs = g.ndata["features"][input_nodes]
                     num_seeds += len(blocks[-1].dstdata[dgl.NID])
                     num_inputs += len(blocks[0].srcdata[dgl.NID])
                     batch_labels = g.ndata["labels"][seeds].long()
@@ -471,7 +482,8 @@ def run(args, device, data):
         epoch_time.append(toc - tic)
 
         # TODO: work on DistGAT.inference()
-        if not args.heterogeneous:
+        # TODO: work on wholgraph
+        if not (args.heterogeneous or args.use_wm):
             if (epoch % args.eval_every == 0 or epoch == args.num_epochs) and isinstance(model, DistGAT):
                 start = time.time()
                 val_acc, test_acc = evaluate(
@@ -504,6 +516,8 @@ def main(args):
     print(f"{host_name}: Initializing DistGraph.", flush=True)
     # e.g., g = dgl.distributed.DistGraph("igbh",part_config="./out_data_2_2/igbh600m.json")
     # Either enable shared memory of the server (by default by dgl), or specify gpb (partition book) in the following DistGraph initiation argument.
+    if args.use_wm:
+        assert args.part_config.endswith("_with_wg.json"), "part_config must ends with '_with_wg.json'"
     g = dgl.distributed.DistGraph(args.graph_name, part_config=args.part_config)
     print(f"{host_name} {g.rank()}: Rank of {host_name}: {g.rank()}", flush=True)
 
@@ -613,6 +627,8 @@ def main(args):
     else:
         dev_id = g.rank() % args.num_gpus
         device = th.device("cuda:" + str(dev_id))
+    # Set default cuda device for the wholegraph communicator
+    th.cuda.set_device(device)
     n_classes = args.n_classes
     if n_classes == 0:
         if args.heterogeneous:
@@ -623,12 +639,35 @@ def main(args):
         del labels
     print(f"{host_name} {g.rank()}: Number of classes: {n_classes}", flush=True)
 
-    # Pack data.
-    if args.heterogeneous:
-        in_feats = g.nodes["paper"].data['features'][np.arange(g.num_nodes("paper"))].shape[1]
+    if args.use_wm:
+        # init and load features into wholegraph feature store
+        args.ngpu_per_node = args.num_gpus # Add this to args to pass to init_wholegraph
+        feat_comm = init_wholegraph(args)
+        dev_id = th.cuda.current_device()
+        config_path = os.environ.get("DGL_CONF_PATH")
+        feat_dim, wg_path = parse_wholegraph_config(config_path, args.dataset)
+        # Pack data
+        if args.heterogeneous:
+            raise NotImplementedError
+            node_feat_wm_embedding, num_features_offset = load_wholegraph_distribute_feature_tensor(
+                feat_comm, feat_dim, feat_path, args.dataset, args.wm_feat_location
+            )
+            in_feats = num_features_offset["paper"][1] - num_features_offset["paper"][0]
+            wm_features = (node_feat_wm_embedding, num_features_offset)
+        else:
+            node_feat_wm_embedding = load_wholegraph_distribute_feature_tensor(
+                feat_comm, feat_dim, wg_path, args.dataset, args.wm_feat_location
+            )
+            in_feats = node_feat_wm_embedding.shape[1]
+            wm_features = node_feat_wm_embedding
+        data = train_nid, val_nid, test_nid, in_feats, n_classes, g, wm_features
     else:
-        in_feats = g.ndata["features"].shape[1]
-    data = train_nid, val_nid, test_nid, in_feats, n_classes, g
+        # Pack data.
+        if args.heterogeneous:
+            in_feats = g.nodes["paper"].data['features'][np.arange(g.num_nodes("paper"))].shape[1]
+        else:
+            in_feats = g.ndata["features"].shape[1]
+        data = train_nid, val_nid, test_nid, in_feats, n_classes, g
 
 
     # Train and evaluate.
@@ -670,7 +709,6 @@ if __name__ == "__main__":
     parser.add_argument("--num_epochs", type=int, default=20)
     parser.add_argument("--num_hidden", type=int, default=16)
     parser.add_argument("--heterogeneous", action="store_true")
-    parser.add_argument("--wholegraph", action="store_true")
     parser.add_argument("--n_layers", type=int, default=2)
     parser.add_argument("--fan_out", type=str, default="10,25")
     parser.add_argument("--batch_size", type=int, default=1000)
@@ -695,10 +733,34 @@ if __name__ == "__main__":
         action="store_true",
         help="Regenerate node features.",
     )
-    args = parser.parse_args()
+    
+    parser.add_argument(
+        "--wg-launch-agent", type=str, choices=["pytorch", "mpi"], default="pytorch",
+        help="Initialize wholegraph communication backend through pytorch, or mpi (srun)"
+    )
+    parser.add_argument(
+        "--wg-comm-backend", type=str, choices=["nccl", "nvshmem"], default="nccl",
+        help="WholeGraph communication backend library using nccl or nvshmem"
+    )
+    parser.add_argument(
+        "--use-wm",
+        action="store_true",
+        help="turn the features into wholegraph compatible format.",
+    )
+    parser.add_argument(
+        "--wm-feat-location",
+        type=str,
+        choices=["cpu", "cuda"],
+        default="cpu",
+        help="feature store at [cpu|cuda]",
+    )
 
-    if args.wholegraph:
-        raise NotImplementedError
+    args = parser.parse_args()
+    
+    if args.wg_comm_backend == 'nvshmem':
+        os.environ["NVSHMEM_SYMMETRIC_SIZE"] = "15g"
+
+    if args.use_wm:
         import torch.distributed as dist
         from .DistDGL_WholeGraph.utils.wholegraph_launch import (
             init_wholegraph,

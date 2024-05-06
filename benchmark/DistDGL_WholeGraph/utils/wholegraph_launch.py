@@ -40,6 +40,7 @@ def init_wholegraph(args):
     wgth.distributed_launch(config, lambda: None)
     wmb.init(0)
     wgth.comm.set_world_info(wgth.get_rank(), wgth.get_world_size(), wgth.get_local_rank(), wgth.get_local_size(),)
+    # print("Wholegraph initialized", wgth.get_rank(), wgth.get_world_size(), wgth.get_local_rank(), wgth.get_local_size(), flush=True)
     if args.wg_launch_agent == 'pytorch':
         assert args.wg_comm_backend=='nccl', "nvshmem does not support launching through pytorch. Please use mpi instead."
     global_comm = wgth.comm.get_global_communicator(args.wg_comm_backend)
