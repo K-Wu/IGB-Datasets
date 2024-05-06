@@ -71,6 +71,7 @@ def parse_wholegraph_config(config_path, dataset) -> tuple[Union[dict, int], str
     except Exception as e:
         # Get default location if config file does not specify
         print("Config file did not specify the wg_features directory. Using default location for wholegraph feature store.")
+        config_dir = os.path.dirname(config_path)
         wg_dir = os.path.join(config_dir, 'wg_features')
     
     assert os.path.exists(wg_dir), f"Wholegraph feature store not found at {wg_dir}"

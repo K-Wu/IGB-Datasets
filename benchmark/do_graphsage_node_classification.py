@@ -641,7 +641,9 @@ def main(args):
 
     if args.use_wm:
         # init and load features into wholegraph feature store
-        args.ngpu_per_node = args.num_gpus # Add this to args to pass to init_wholegraph
+        # Add this to args to pass to init_wholegraph and following wholegraph APIs
+        args.ngpu_per_node = args.num_gpus 
+        args.dataset = os.path.basename(args.part_config)[:-len("_with_wg.json")]
         feat_comm = init_wholegraph(args)
         dev_id = th.cuda.current_device()
         config_path = os.environ.get("DGL_CONF_PATH")

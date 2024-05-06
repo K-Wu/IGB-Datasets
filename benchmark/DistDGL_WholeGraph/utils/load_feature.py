@@ -16,7 +16,7 @@ def _load_wholegraph_distribute_feature_tensor_homogeneous(feature_comm, feat_la
     embedding_wholememory_location = wm_feat_location
     if wgth.get_rank() == 0:
         print(
-            f"wholegraph feature embedding: type={embedding_wholememory_type}, location={embedding_wholememory_location}, communication backend={feature_comm.preferred_distributed_backend}"
+            f"wholegraph feature embedding: type={embedding_wholememory_type}, location={embedding_wholememory_location}, communication backend={feature_comm.distributed_backend}"
         )
     feat_store = wgth.create_embedding_from_filelist(
         feature_comm,
@@ -38,7 +38,7 @@ def _load_wholegraph_distribute_feature_tensor_heterogeneous(feature_comm, feat_
     embedding_wholememory_location = wm_feat_location
     if wgth.get_rank() == 0:
         print(
-            f"wholegraph feature embedding: type={embedding_wholememory_type}, location={embedding_wholememory_location}, communication backend={feature_comm.preferred_distributed_backend}"
+            f"wholegraph feature embedding: type={embedding_wholememory_type}, location={embedding_wholememory_location}, communication backend={feature_comm.distributed_backend}"
         )
 
     feat_last_dim_size = feat_dim[list(feat_dim.keys())[0]][-1]
