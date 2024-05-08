@@ -92,7 +92,7 @@ class IGB260M(object):
                 )
             else:
                 path = osp.join(
-                    self.dir, "full", "processed", "paper", "node_feat.npy"
+                    self.dir, self.size, "processed", "paper", "node_feat.npy"
                 )
             emb = np.memmap(
                 path, dtype="float32", mode="r", shape=(num_nodes, 1024)
@@ -129,7 +129,7 @@ class IGB260M(object):
                 else:
                     path = osp.join(
                         self.dir,
-                        "full",
+                        self.size,
                         "processed",
                         "paper",
                         "node_label_19.npy",
@@ -146,7 +146,7 @@ class IGB260M(object):
                 else:
                     path = osp.join(
                         self.dir,
-                        "full",
+                        self.size,
                         "processed",
                         "paper",
                         "node_label_2K.npy",
@@ -1010,13 +1010,14 @@ class IGBHeteroDGLDatasetMassive(DGLDataset):
                 )
             else:
                 # The original code uses 'full' for the path. https://github.com/IllinoisGraphBenchmark/IGB-Datasets/blob/main/igb/dataloader.py#L321
-                if is_this_machine_bafs():
+                if is_this_machine_bafs() and self.args.dataset_size == "full":
+                    # TODO: this is never going to be true because self.args.dataset_size == "large"
                     paper_node_features_path = get_bafs_path(
                         "full", "processed", "paper", "node_feat.npy"
                     )
                 else:
                     paper_node_features_path = osp.join(
-                        self.dir, "full", "processed", "paper", "node_feat.npy"
+                        self.dir, "large", "processed", "paper", "node_feat.npy"
                     )
                 paper_node_features = torch.from_numpy(
                     np.memmap(
@@ -1033,14 +1034,15 @@ class IGBHeteroDGLDatasetMassive(DGLDataset):
                     )
                 )
             if self.args.num_classes == 19:
-                if is_this_machine_bafs():
+                if is_this_machine_bafs() and self.args.dataset_size == "full":
+                    # TODO: this is never going to be true because self.args.dataset_size == "large"
                     paper_node_labels_path = get_bafs_path(
                         "full", "processed", "paper", "node_label_19.npy"
                     )
                 else:
                     paper_node_labels_path = osp.join(
                         self.dir,
-                        "full",
+                        "large",
                         "processed",
                         "paper",
                         "node_label_19.npy",
@@ -1054,14 +1056,15 @@ class IGBHeteroDGLDatasetMassive(DGLDataset):
                     )
                 ).to(torch.long)
             elif self.args.num_classes == 2983:
-                if is_this_machine_bafs():
+                if is_this_machine_bafs() and self.args.dataset_size == "full":
+                    # TODO: this is never going to be true because self.args.dataset_size == "large"
                     paper_node_labels_path = get_bafs_path(
                         "full", "processed", "paper", "node_label_2K.npy"
                     )
                 else:
                     paper_node_labels_path = osp.join(
                         self.dir,
-                        "full",
+                        "large",
                         "processed",
                         "paper",
                         "node_label_2K.npy",
@@ -1080,14 +1083,15 @@ class IGBHeteroDGLDatasetMassive(DGLDataset):
                     "dummy_feats not implemented for large igbh"
                 )
             else:
-                if is_this_machine_bafs():
+                if is_this_machine_bafs() and self.args.dataset_size == "full":
+                    # TODO: this is never going to be true because self.args.dataset_size == "large"
                     author_node_features_path = get_bafs_path(
                         "full", "processed", "author", "node_feat.npy"
                     )
                 else:
                     author_node_features_path = osp.join(
                         self.dir,
-                        "full",
+                        "large",
                         "processed",
                         "author",
                         "node_feat.npy",
