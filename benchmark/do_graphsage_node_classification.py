@@ -354,6 +354,7 @@ def run(args, device, data):
     epoch = 0
     epoch_time = []
     test_acc = 0.0
+    th.distributed.barrier()
     for _ in range(args.num_epochs):
         epoch += 1
         tic = time.time()
@@ -374,6 +375,7 @@ def run(args, device, data):
         sampled_step_end = 101 # 600
         with model.join():
             for step, (input_nodes, seeds, blocks) in enumerate(dataloader):
+                th.distributed.barrier()
                 tic_step = time.time()
                 sample_and_aggregate_times.append(tic_step - start)  # KWU: Sample and aggregation time
                 # Slice feature and label.
@@ -420,13 +422,16 @@ def run(args, device, data):
                     batch_inputs = batch_inputs.to(device)
                     batch_labels = batch_labels.to(device)
                 # Compute loss and prediction.
+                th.distributed.barrier()
                 start = time.time()
                 movement_time = start - tic_step # KWU: Movement time
                 batch_pred = model(blocks, batch_inputs)
                 loss = loss_fcn(batch_pred, batch_labels)
+                th.distributed.barrier()
                 forward_end = time.time()
                 optimizer.zero_grad()
                 loss.backward()
+                th.distributed.barrier()
                 compute_end = time.time()
                 forward_times.append(forward_end - start)
                 backward_times.append(compute_end - forward_end)
@@ -470,6 +475,7 @@ def run(args, device, data):
                         f" | GPU {gpu_mem_alloc:.1f} MB | "
                         f"Mean step time {mean_step_time:.3f} s", flush=True
                     )
+                th.distributed.barrier()
                 start = time.time()
 
         toc = time.time()
