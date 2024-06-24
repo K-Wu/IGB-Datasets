@@ -40,6 +40,7 @@ def init_wholegraph(args):
     wgth.distributed_launch(config, lambda: None)
     wmb.init(0)
     wgth.comm.set_world_info(wgth.get_rank(), wgth.get_world_size(), wgth.get_local_rank(), wgth.get_local_size(),)
+    # print("Wholegraph initialized", wgth.get_rank(), wgth.get_world_size(), wgth.get_local_rank(), wgth.get_local_size(), flush=True)
     if args.wg_launch_agent == 'pytorch':
         assert args.wg_comm_backend=='nccl', "nvshmem does not support launching through pytorch. Please use mpi instead."
     global_comm = wgth.comm.get_global_communicator(args.wg_comm_backend)
@@ -70,6 +71,7 @@ def parse_wholegraph_config(config_path, dataset) -> tuple[Union[dict, int], str
     except Exception as e:
         # Get default location if config file does not specify
         print("Config file did not specify the wg_features directory. Using default location for wholegraph feature store.")
+        config_dir = os.path.dirname(config_path)
         wg_dir = os.path.join(config_dir, 'wg_features')
     
     assert os.path.exists(wg_dir), f"Wholegraph feature store not found at {wg_dir}"
