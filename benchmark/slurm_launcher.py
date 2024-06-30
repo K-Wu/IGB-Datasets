@@ -563,6 +563,9 @@ def submit_jobs(args, udf_command, dry_run=False):
     )
     for i in range(len(hosts) * server_count_per_machine):
         ip, _, nodename = hosts[int(i / server_count_per_machine)]
+        # if args.enable_nsys and i % server_count_per_machine == 0:
+        #     # Use nsight system profiler to profile the first process by prepending nsys [args] to udf_command
+        #     udf_command = f"nsys profile --duration {args.nsys_duration} --force-overwrite true --trace=nvtx,cuda  -o {nodename}_server_{args.nsys_output_filename} {udf_command}"
         server_env_vars_cur = f"{server_env_vars} DGL_SERVER_ID={i}"
         cmd = wrap_cmd_with_local_envvars(udf_command, server_env_vars_cur)
         cmd = (
@@ -611,6 +614,12 @@ def submit_jobs(args, udf_command, dry_run=False):
             master_addr=master_addr,
             master_port=master_port,
         )
+        # Enable nsight system profiling by prepending nsys [args] to torch_dist_udf_command
+        if args.enable_nsys:
+            torch_dist_udf_command = f"nsys profile --duration {args.nsys_duration} --force-overwrite true --trace=nvtx,cuda  -o {nodename}_{args.nsys_output_filename} {torch_dist_udf_command}"
+            print(
+                    f"nsys command on {node_id} {host}: {torch_dist_udf_command}", flush=True
+                )
         cmd = wrap_cmd_with_local_envvars(
             torch_dist_udf_command, client_env_vars
         )
@@ -740,6 +749,24 @@ def main():
         help="Extra environment parameters need to be set. For example, \
                         you can set the LD_LIBRARY_PATH and NCCL_DEBUG by adding: \
                         --extra_envs LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH NCCL_DEBUG=INFO ",
+    )
+    parser.add_argument(
+        "--enable-nsys",
+        action="store_true",
+        help="Enable nsys profiling",
+    )
+    parser.add_argument(
+        "--nsys-duration",
+        type=int,
+        default=0,
+        help="The duration of nsys profiling. It is useful only when nsys profiling is turned on \
+                If it is set to 0, nsys profile until the program ends. \
+                Otherwise, nsys profiling is enabled and the duration is the time in seconds.",
+    )
+    parser.add_argument(
+        "--nsys_output_filename",
+        type=str,
+        default="",
     )
     args, udf_command = parser.parse_known_args()
     assert len(udf_command) == 1, "Please provide user command line."
