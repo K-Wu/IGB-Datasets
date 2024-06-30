@@ -16,21 +16,47 @@ from dgl.nn.pytorch import GATConv, HeteroGraphConv
 from dgl import apply_each
 import os
 
+
 class DistRGAT(nn.Module):
     """Adapted from class GAT in /IGB-datasets/igb/models.py. Arguments of __init__ are renamed to unify with the DistSAGE class."""
-    def __init__(self, etypes, in_feats, n_hidden, n_classes, n_heads, n_layers=2, dropout=0.2):
+
+    def __init__(
+        self,
+        etypes,
+        in_feats,
+        n_hidden,
+        n_classes,
+        n_heads,
+        n_layers=2,
+        dropout=0.2,
+    ):
         super().__init__()
         self.layers = nn.ModuleList()
-        self.layers.append(HeteroGraphConv({
-            etype: GATConv(in_feats, n_hidden // n_heads, n_heads)
-            for etype in etypes}))
-        for _ in range(n_layers-2):
-            self.layers.append(HeteroGraphConv({
-                etype: GATConv(n_hidden, n_hidden // n_heads, n_heads)
-                for etype in etypes}))
-        self.layers.append(HeteroGraphConv({
-            etype: GATConv(n_hidden, n_hidden // n_heads, n_heads)
-            for etype in etypes}))
+        self.layers.append(
+            HeteroGraphConv(
+                {
+                    etype: GATConv(in_feats, n_hidden // n_heads, n_heads)
+                    for etype in etypes
+                }
+            )
+        )
+        for _ in range(n_layers - 2):
+            self.layers.append(
+                HeteroGraphConv(
+                    {
+                        etype: GATConv(n_hidden, n_hidden // n_heads, n_heads)
+                        for etype in etypes
+                    }
+                )
+            )
+        self.layers.append(
+            HeteroGraphConv(
+                {
+                    etype: GATConv(n_hidden, n_hidden // n_heads, n_heads)
+                    for etype in etypes
+                }
+            )
+        )
         self.dropout = nn.Dropout(dropout)
         self.linear = nn.Linear(n_hidden, n_classes)
 
@@ -38,36 +64,57 @@ class DistRGAT(nn.Module):
         h = x
         for l, (layer, block) in enumerate(zip(self.layers, blocks)):
             h = layer(block, h)
-            h = apply_each(h, lambda x: x.view(x.shape[0], x.shape[1] * x.shape[2]))
+            h = apply_each(
+                h, lambda x: x.view(x.shape[0], x.shape[1] * x.shape[2])
+            )
             if l != len(self.layers) - 1:
                 h = apply_each(h, F.relu)
                 h = apply_each(h, self.dropout)
-        return self.linear(h['paper'])   
+        return self.linear(h["paper"])
 
-      
 
 class DistGAT(nn.Module):
     """Adapted from class GAT in /IGB-datasets/igb/models.py. Arguments of __init__ are renamed to unify with the DistSAGE class."""
-    def __init__(self, in_feats, n_hidden, n_classes, n_heads, n_layers=2, dropout=0.2):
+
+    def __init__(
+        self, in_feats, n_hidden, n_classes, n_heads, n_layers=2, dropout=0.2
+    ):
         super(DistGAT, self).__init__()
         self.layers = nn.ModuleList()
-        self.layers.append(GATConv(in_feats, n_hidden, n_heads, allow_zero_in_degree=True))
-        for _ in range(n_layers-2):
-            self.layers.append(GATConv(n_hidden * n_heads, n_hidden, n_heads, allow_zero_in_degree=True))
-        self.layers.append(GATConv(n_hidden * n_heads, n_classes, n_heads, allow_zero_in_degree=True))
+        self.layers.append(
+            GATConv(in_feats, n_hidden, n_heads, allow_zero_in_degree=True)
+        )
+        for _ in range(n_layers - 2):
+            self.layers.append(
+                GATConv(
+                    n_hidden * n_heads,
+                    n_hidden,
+                    n_heads,
+                    allow_zero_in_degree=True,
+                )
+            )
+        self.layers.append(
+            GATConv(
+                n_hidden * n_heads,
+                n_classes,
+                n_heads,
+                allow_zero_in_degree=True,
+            )
+        )
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, blocks, x):
         h = x
         for l, (layer, block) in enumerate(zip(self.layers, blocks)):
-            h_dst = h[:block.num_dst_nodes()]
+            h_dst = h[: block.num_dst_nodes()]
             if l < len(self.layers) - 1:
                 h = layer(block, (h, h_dst)).flatten(1)
                 h = F.relu(h)
                 h = self.dropout(h)
             else:
-                h = layer(block, (h, h_dst)).mean(1)  
+                h = layer(block, (h, h_dst)).mean(1)
         return h
+
 
 class DistSAGE(nn.Module):
     """
@@ -161,11 +208,16 @@ class DistSAGE(nn.Module):
                 name,
                 persistent=True,
             )
-            print(f"|V|={g.num_nodes()}, inference batch size: {batch_size}", flush=True)
+            print(
+                f"|V|={g.num_nodes()}, inference batch size: {batch_size}",
+                flush=True,
+            )
 
             # `-1` indicates all inbound edges will be inlcuded, namely, full
             # neighbor sampling.
-            sampler = dgl.dataloading.NeighborSampler([-1], fused=False) # fused=True is not supported in DistGraph
+            sampler = dgl.dataloading.NeighborSampler(
+                [-1], fused=False
+            )  # fused=True is not supported in DistGraph
             dataloader = dgl.dataloading.DistNodeDataLoader(
                 g,
                 nodes,
@@ -268,7 +320,9 @@ def run(args, device, data):
     """
     host_name = socket.gethostname()
     if args.use_wm:
-        train_nid, val_nid, test_nid, in_feats, n_classes, g, wm_features = data
+        train_nid, val_nid, test_nid, in_feats, n_classes, g, wm_features = (
+            data
+        )
         if args.heterogeneous:
             wm_features, num_features_offset = wm_features
     else:
@@ -305,7 +359,10 @@ def run(args, device, data):
             args.dropout,
         )
     elif args.model == "DistGAT":
-        print(f"{host_name} {g.rank()}: Using DistGAT model default parameters batch_size(2048) fanout (5,2,2,2) n_layers (4), hidden_dim 512, n_heads (4)", flush=True)
+        print(
+            f"{host_name} {g.rank()}: Using DistGAT model default parameters batch_size(2048) fanout (5,2,2,2) n_layers (4), hidden_dim 512, n_heads (4)",
+            flush=True,
+        )
         assert not args.heterogeneous
         assert args.batch_size == 2048
         assert args.fan_out == "5,2,2,2" or args.fan_out == "10,5,5"
@@ -313,28 +370,31 @@ def run(args, device, data):
         assert args.num_hidden == 512
         model = DistGAT(
             in_feats,
-            n_hidden = args.num_hidden,
-            n_classes = n_classes,
-            n_heads = 4,
-            n_layers = args.n_layers,
-            dropout = args.dropout,
+            n_hidden=args.num_hidden,
+            n_classes=n_classes,
+            n_heads=4,
+            n_layers=args.n_layers,
+            dropout=args.dropout,
         )
     elif args.model == "DistRGAT":
-        print(f"{host_name} {g.rank()}: Using DistRGAT model default parameters batch_size(2048) fanout (5,2,2,2) n_layers (4), hidden_dim 512, n_heads (4)", flush=True)
+        print(
+            f"{host_name} {g.rank()}: Using DistRGAT model default parameters batch_size(2048) fanout (5,2,2,2) n_layers (4), hidden_dim 512, n_heads (4)",
+            flush=True,
+        )
         assert args.heterogeneous
         assert args.batch_size == 2048
         assert args.fan_out == "5,2,2,2" or args.fan_out == "10,5,5"
         assert args.n_layers == 4 or args.n_layers == 3
-        if args.graph_name!="mag240m":
+        if args.graph_name != "mag240m":
             assert args.num_hidden == 512
         model = DistRGAT(
             g.etypes,
             in_feats,
-            n_hidden = args.num_hidden,
-            n_classes = n_classes,
-            n_heads = 4,
-            n_layers = args.n_layers,
-            dropout = args.dropout,
+            n_hidden=args.num_hidden,
+            n_classes=n_classes,
+            n_heads=4,
+            n_layers=args.n_layers,
+            dropout=args.dropout,
         )
     else:
         raise ValueError(f"Unsupported model: {args.model}")
@@ -370,14 +430,18 @@ def run(args, device, data):
         sampled_times_sampling = []
         sampled_times_movement = []
         sampled_times_training = []
-        sampled_step_beg =  1 # 500
-        assert sampled_step_beg >=1, "sampled_step_beg must be at least 1 because we need to execute dataloader.set_print_times(g.rank()) in the previous step"
-        sampled_step_end = 101 # 600
+        sampled_step_beg = 1  # 500
+        assert (
+            sampled_step_beg >= 1
+        ), "sampled_step_beg must be at least 1 because we need to execute dataloader.set_print_times(g.rank()) in the previous step"
+        sampled_step_end = 101  # 600
         with model.join():
             for step, (input_nodes, seeds, blocks) in enumerate(dataloader):
                 th.distributed.barrier()
                 tic_step = time.time()
-                sample_and_aggregate_times.append(tic_step - start)  # KWU: Sample and aggregation time
+                sample_and_aggregate_times.append(
+                    tic_step - start
+                )  # KWU: Sample and aggregation time
                 # Slice feature and label.
                 if args.heterogeneous:
                     # print("blocks", blocks, flush=True)
@@ -393,13 +457,28 @@ def run(args, device, data):
                     if args.use_wm:
                         raise NotImplementedError
                     else:
-                        batch_inputs = {ntype: g.nodes[ntype].data["features"][input_nodes[ntype]] for ntype in g.ntypes}
-                    batch_labels = g.nodes["paper"].data["labels"][seeds['paper']].long()
+                        batch_inputs = {
+                            ntype: g.nodes[ntype].data["features"][
+                                input_nodes[ntype]
+                            ]
+                            for ntype in g.ntypes
+                        }
+                    batch_labels = (
+                        g.nodes["paper"].data["labels"][seeds["paper"]].long()
+                    )
                     # number_train += seeds["paper"].shape[0]
                     num_inputs += np.sum(
-                    [blocks[0].num_src_nodes(ntype) for ntype in blocks[0].ntypes]
+                        [
+                            blocks[0].num_src_nodes(ntype)
+                            for ntype in blocks[0].ntypes
+                        ]
                     )
-                    num_seeds = np.sum([blocks[-1].num_dst_nodes(ntype) for ntype in blocks[-1].ntypes])
+                    num_seeds = np.sum(
+                        [
+                            blocks[-1].num_dst_nodes(ntype)
+                            for ntype in blocks[-1].ntypes
+                        ]
+                    )
                 else:
                     # TODO: add wholegraph support according to L144 in benchmark/DistDGL_WholeGraph/node_classification.py
                     if args.use_wm:
@@ -409,12 +488,14 @@ def run(args, device, data):
                     num_seeds += len(blocks[-1].dstdata[dgl.NID])
                     num_inputs += len(blocks[0].srcdata[dgl.NID])
                     batch_labels = g.ndata["labels"][seeds].long()
-                
+
                 # Move to target device.
                 blocks = [block.to(device) for block in blocks]
                 if args.heterogeneous:
-                    batch_inputs = {k: v.to(device) for k, v in batch_inputs.items()}
-                    #batch_labels = {k: v.to(device) for k, v in batch_labels.items()}
+                    batch_inputs = {
+                        k: v.to(device) for k, v in batch_inputs.items()
+                    }
+                    # batch_labels = {k: v.to(device) for k, v in batch_labels.items()}
                     batch_labels = batch_labels.to(device)
                     # print("batch_inputs", batch_inputs, flush=True)
                     # print("batch_labels", batch_labels, flush=True)
@@ -424,7 +505,7 @@ def run(args, device, data):
                 # Compute loss and prediction.
                 th.distributed.barrier()
                 start = time.time()
-                movement_time = start - tic_step # KWU: Movement time
+                movement_time = start - tic_step  # KWU: Movement time
                 batch_pred = model(blocks, batch_inputs)
                 loss = loss_fcn(batch_pred, batch_labels)
                 th.distributed.barrier()
@@ -438,18 +519,23 @@ def run(args, device, data):
 
                 optimizer.step()
                 update_times.append(time.time() - compute_end)
-                train_time = time.time() - start # KWU: Train time
+                train_time = time.time() - start  # KWU: Train time
 
                 step_t = time.time() - tic_step
                 step_time.append(step_t)
                 iter_tput.append(len(blocks[-1].dstdata[dgl.NID]) / step_t)
 
                 if step >= sampled_step_beg and step < sampled_step_end:
-                    sampled_times_sampling.append(sample_and_aggregate_times[-1])
+                    sampled_times_sampling.append(
+                        sample_and_aggregate_times[-1]
+                    )
                     sampled_times_movement.append(movement_time)
                     sampled_times_training.append(train_time)
-                    print(f"{host_name} {g.rank()}: Part {g.rank()} | Epoch {epoch:05d} | Step {step:05d} | Sample + Aggregation Time {sample_and_aggregate_times[-1]:.4f} sec | Movement Time {movement_time:.4f} sec | Train Time {train_time:.4f} sec", flush=True)
-                
+                    print(
+                        f"{host_name} {g.rank()}: Part {g.rank()} | Epoch {epoch:05d} | Step {step:05d} | Sample + Aggregation Time {sample_and_aggregate_times[-1]:.4f} sec | Movement Time {movement_time:.4f} sec | Train Time {train_time:.4f} sec",
+                        flush=True,
+                    )
+
                 if step == sampled_step_beg - 1:
                     sampler.set_print_times()
                     dataloader.set_print_times(g.rank())
@@ -473,7 +559,8 @@ def run(args, device, data):
                         f" | Loss {loss.item():.4f} | Train Acc {acc.item():.4f}"
                         f" | Speed (samples/sec) {sample_speed:.4f}"
                         f" | GPU {gpu_mem_alloc:.1f} MB | "
-                        f"Mean step time {mean_step_time:.3f} s", flush=True
+                        f"Mean step time {mean_step_time:.3f} s",
+                        flush=True,
                     )
                 th.distributed.barrier()
                 start = time.time()
@@ -483,14 +570,17 @@ def run(args, device, data):
             f"{host_name} {g.rank()}: Part {g.rank()}, Epoch Time(s): {toc - tic:.4f}, "
             f"sample+data_copy: {sum(sample_and_aggregate_times)/len(sample_and_aggregate_times):.4f}, forward: {sum(forward_times)/len(forward_times):.4f},"
             f" backward: {sum(backward_times)/len(backward_times):.4f}, update: {sum(update_times)/len(update_times):.4f}, "
-            f"#seeds: {num_seeds}, #inputs: {num_inputs}", flush=True
+            f"#seeds: {num_seeds}, #inputs: {num_inputs}",
+            flush=True,
         )
         epoch_time.append(toc - tic)
 
         # TODO: work on DistGAT.inference()
         # TODO: work on wholgraph
         if not (args.heterogeneous or args.use_wm):
-            if (epoch % args.eval_every == 0 or epoch == args.num_epochs) and isinstance(model, DistGAT):
+            if (
+                epoch % args.eval_every == 0 or epoch == args.num_epochs
+            ) and isinstance(model, DistGAT):
                 start = time.time()
                 val_acc, test_acc = evaluate(
                     model.module,
@@ -504,7 +594,8 @@ def run(args, device, data):
                 )
                 print(
                     f"Part {g.rank()}, Val Acc {val_acc:.4f}, "
-                    f"Test Acc {test_acc:.4f}, time: {time.time() - start:.4f}", flush=True
+                    f"Test Acc {test_acc:.4f}, time: {time.time() - start:.4f}",
+                    flush=True,
                 )
 
     return np.mean(epoch_time[-int(args.num_epochs * 0.8) :]), test_acc
@@ -523,12 +614,20 @@ def main(args):
     # e.g., g = dgl.distributed.DistGraph("igbh",part_config="./out_data_2_2/igbh600m.json")
     # Either enable shared memory of the server (by default by dgl), or specify gpb (partition book) in the following DistGraph initiation argument.
     if args.use_wm:
-        assert args.part_config.endswith("_with_wg.json"), "part_config must ends with '_with_wg.json'"
-    g = dgl.distributed.DistGraph(args.graph_name, part_config=args.part_config)
-    print(f"{host_name} {g.rank()}: Rank of {host_name}: {g.rank()}", flush=True)
+        assert args.part_config.endswith(
+            "_with_wg.json"
+        ), "part_config must ends with '_with_wg.json'"
+    g = dgl.distributed.DistGraph(
+        args.graph_name, part_config=args.part_config
+    )
+    print(
+        f"{host_name} {g.rank()}: Rank of {host_name}: {g.rank()}", flush=True
+    )
 
     if args.regenerate_node_features:
-        print(f"{host_name} {g.rank()}: Regenerating node features.", flush=True)
+        print(
+            f"{host_name} {g.rank()}: Regenerating node features.", flush=True
+        )
         print(f"{host_name} {g.rank()}: num_nodes ", g.num_nodes(), flush=True)
         g.ndata["features"] = th.randn(g.num_nodes(), 1024)
 
@@ -585,7 +684,7 @@ def main(args):
                 node_trainer_ids=g.ndata["trainer_id"],
             )
             val_nid = dgl.distributed.node_split(
-                g.ndata["val_mask"],\
+                g.ndata["val_mask"],
                 pb,
                 force_even=True,
                 node_trainer_ids=g.ndata["trainer_id"],
@@ -625,7 +724,8 @@ def main(args):
             print(
                 f"{host_name} {g.rank()}: part {g.rank()}, train: {len(train_nid)} (local: {num_train_local}), "
                 f"val: {len(val_nid)} (local: {num_val_local}), "
-                f"test: {len(test_nid)} (local: {num_test_local})", flush=True
+                f"test: {len(test_nid)} (local: {num_test_local})",
+                flush=True,
             )
         del local_nid
     if args.num_gpus <= 0:
@@ -638,18 +738,24 @@ def main(args):
     n_classes = args.n_classes
     if n_classes == 0:
         if args.heterogeneous:
-            labels = g.nodes["paper"].data["labels"][np.arange(g.num_nodes("paper"))]
+            labels = g.nodes["paper"].data["labels"][
+                np.arange(g.num_nodes("paper"))
+            ]
         else:
             labels = g.ndata["labels"][np.arange(g.num_nodes())]
         n_classes = len(th.unique(labels[th.logical_not(th.isnan(labels))]))
         del labels
-    print(f"{host_name} {g.rank()}: Number of classes: {n_classes}", flush=True)
+    print(
+        f"{host_name} {g.rank()}: Number of classes: {n_classes}", flush=True
+    )
 
     if args.use_wm:
         # init and load features into wholegraph feature store
         # Add this to args to pass to init_wholegraph and following wholegraph APIs
-        args.ngpu_per_node = args.num_gpus 
-        args.dataset = os.path.basename(args.part_config)[:-len("_with_wg.json")]
+        args.ngpu_per_node = args.num_gpus
+        args.dataset = os.path.basename(args.part_config)[
+            : -len("_with_wg.json")
+        ]
         feat_comm = init_wholegraph(args)
         dev_id = th.cuda.current_device()
         config_path = os.environ.get("DGL_CONF_PATH")
@@ -657,33 +763,58 @@ def main(args):
         # Pack data
         if args.heterogeneous:
             raise NotImplementedError
-            node_feat_wm_embedding, num_features_offset = load_wholegraph_distribute_feature_tensor(
-                feat_comm, feat_dim, feat_path, args.dataset, args.wm_feat_location
+            node_feat_wm_embedding, num_features_offset = (
+                load_wholegraph_distribute_feature_tensor(
+                    feat_comm,
+                    feat_dim,
+                    feat_path,
+                    args.dataset,
+                    args.wm_feat_location,
+                )
             )
-            in_feats = num_features_offset["paper"][1] - num_features_offset["paper"][0]
+            in_feats = (
+                num_features_offset["paper"][1]
+                - num_features_offset["paper"][0]
+            )
             wm_features = (node_feat_wm_embedding, num_features_offset)
         else:
             node_feat_wm_embedding = load_wholegraph_distribute_feature_tensor(
-                feat_comm, feat_dim, wg_path, args.dataset, args.wm_feat_location
+                feat_comm,
+                feat_dim,
+                wg_path,
+                args.dataset,
+                args.wm_feat_location,
             )
             in_feats = node_feat_wm_embedding.shape[1]
             wm_features = node_feat_wm_embedding
-        data = train_nid, val_nid, test_nid, in_feats, n_classes, g, wm_features
+        data = (
+            train_nid,
+            val_nid,
+            test_nid,
+            in_feats,
+            n_classes,
+            g,
+            wm_features,
+        )
     else:
         # Pack data.
         if args.heterogeneous:
-            in_feats = g.nodes["paper"].data['features'][np.arange(g.num_nodes("paper"))].shape[1]
+            in_feats = (
+                g.nodes["paper"]
+                .data["features"][np.arange(g.num_nodes("paper"))]
+                .shape[1]
+            )
         else:
             in_feats = g.ndata["features"].shape[1]
         data = train_nid, val_nid, test_nid, in_feats, n_classes, g
-
 
     # Train and evaluate.
     epoch_time, test_acc = run(args, device, data)
     print(
         f"{host_name} {g.rank()}: Summary of node classification(GraphSAGE): GraphName "
         f"{args.graph_name} | TrainEpochTime(mean) {epoch_time:.4f} "
-        f"| TestAccuracy {test_acc:.4f}", flush=True
+        f"| TestAccuracy {test_acc:.4f}",
+        flush=True,
     )
 
 
@@ -697,7 +828,10 @@ if __name__ == "__main__":
         "--part_config", type=str, help="The path to the partition config file"
     )
     parser.add_argument(
-        "--model", type=str, default="DistSAGE", help="model to use. DistSAGE or DistGAT"
+        "--model",
+        type=str,
+        default="DistSAGE",
+        help="model to use. DistSAGE or DistGAT",
     )
     parser.add_argument(
         "--n_classes", type=int, default=0, help="the number of classes"
@@ -714,7 +848,7 @@ if __name__ == "__main__":
         default=0,
         help="the number of GPU device. Use 0 for CPU training",
     )
-    parser.add_argument("--num_epochs", type=int, default=20)
+    parser.add_argument("--num_epochs", type=int, default=5)
     parser.add_argument("--num_hidden", type=int, default=16)
     parser.add_argument("--heterogeneous", action="store_true")
     parser.add_argument("--n_layers", type=int, default=2)
@@ -741,14 +875,20 @@ if __name__ == "__main__":
         action="store_true",
         help="Regenerate node features.",
     )
-    
+
     parser.add_argument(
-        "--wg-launch-agent", type=str, choices=["pytorch", "mpi"], default="pytorch",
-        help="Initialize wholegraph communication backend through pytorch, or mpi (srun)"
+        "--wg-launch-agent",
+        type=str,
+        choices=["pytorch", "mpi"],
+        default="pytorch",
+        help="Initialize wholegraph communication backend through pytorch, or mpi (srun)",
     )
     parser.add_argument(
-        "--wg-comm-backend", type=str, choices=["nccl", "nvshmem"], default="nccl",
-        help="WholeGraph communication backend library using nccl or nvshmem"
+        "--wg-comm-backend",
+        type=str,
+        choices=["nccl", "nvshmem"],
+        default="nccl",
+        help="WholeGraph communication backend library using nccl or nvshmem",
     )
     parser.add_argument(
         "--use-wm",
@@ -764,8 +904,8 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    
-    if args.wg_comm_backend == 'nvshmem':
+
+    if args.wg_comm_backend == "nvshmem":
         os.environ["NVSHMEM_SYMMETRIC_SIZE"] = "15g"
 
     if args.use_wm:
@@ -775,7 +915,7 @@ if __name__ == "__main__":
             parse_wholegraph_config,
             create_wholegraph_dist_tensor,
             is_wm_tensor,
-            wm_scatter
+            wm_scatter,
         )
         from .DistDGL_WholeGraph.utils.load_feature import (
             load_wholegraph_distribute_feature_tensor,
