@@ -64,7 +64,8 @@ def kill_process(ip, port, pids):
             killed_pids.sort()
             for pid in killed_pids:
                 print(
-                    "kill process {} on {}:{}".format(pid, ip, port), flush=True
+                    "kill process {} on {}:{}".format(pid, ip, port),
+                    flush=True,
                 )
                 kill_cmd = (
                     "ssh -o StrictHostKeyChecking=no -p "
@@ -419,7 +420,7 @@ def construct_dgl_client_env_vars(
         "DGL_NUM_SAMPLER={DGL_NUM_SAMPLER} "
         "DGL_NUM_CLIENT={DGL_NUM_CLIENT} "
         "DGL_CONF_PATH={DGL_CONF_PATH} "
-        "DGL_DIST_MAX_TRY_TIMES=1048576 " # Set the maximum number of retries for the client to connect to the server
+        "DGL_DIST_MAX_TRY_TIMES=1048576 "  # Set the maximum number of retries for the client to connect to the server
         "DGL_IP_CONFIG={DGL_IP_CONFIG} "
         "DGL_NUM_SERVER={DGL_NUM_SERVER} "
         "DGL_GRAPH_FORMAT={DGL_GRAPH_FORMAT} "
@@ -604,7 +605,7 @@ def submit_jobs(args, udf_command, dry_run=False):
     master_addr = hosts[0][0]
     master_port = get_available_port(master_addr)
     for node_id, host in enumerate(hosts):
-        ip, _,nodename = host
+        ip, _, nodename = host
         # Transform udf_command to follow torch's dist launcher format: `PYTHON_BIN -m torch.distributed.run ... UDF`
         torch_dist_udf_command = wrap_udf_in_torch_dist_launcher(
             udf_command=udf_command,
@@ -616,10 +617,12 @@ def submit_jobs(args, udf_command, dry_run=False):
         )
         # Enable nsight system profiling by prepending nsys [args] to torch_dist_udf_command
         if args.enable_nsys:
-            torch_dist_udf_command = f"nsys profile --duration {args.nsys_duration} --force-overwrite true --trace=nvtx,cuda  -o {nodename}_{args.nsys_output_filename} {torch_dist_udf_command}"
+            #  --cuda-memory-usage=true
+            torch_dist_udf_command = f"nsys profile --duration {args.nsys_duration} --force-overwrite true --trace=nvtx,cuda -o {nodename}_{args.nsys_output_filename} {torch_dist_udf_command}"
             print(
-                    f"nsys command on {node_id} {host}: {torch_dist_udf_command}", flush=True
-                )
+                f"nsys command on {node_id} {host}: {torch_dist_udf_command}",
+                flush=True,
+            )
         cmd = wrap_cmd_with_local_envvars(
             torch_dist_udf_command, client_env_vars
         )
@@ -633,7 +636,11 @@ def submit_jobs(args, udf_command, dry_run=False):
         if not dry_run:
             thread_list.append(
                 execute_remote(
-                    cmd, state_q, nodename, args.ssh_port, username=args.ssh_username
+                    cmd,
+                    state_q,
+                    nodename,
+                    args.ssh_port,
+                    username=args.ssh_username,
                 )
             )
 
