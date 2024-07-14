@@ -168,12 +168,6 @@ if __name__ == "__main__":
         help="the number of trainers per machine. The trainer ids are stored\
                                 in the node feature 'trainer_id'",
     )
-    argparser.add_argument(
-        "--output",
-        type=str,
-        default="data",
-        help="Output path of partitioned graph.",
-    )
     args = argparser.parse_args()
     if args.heterogeneous:
         raise NotImplementedError(
@@ -250,8 +244,9 @@ if __name__ == "__main__":
             g,
             args.dataset,
             args.num_parts,
-            "out_single_dataset_dgl_method",
-            part_method="random",
+            f"out_{args.dataset}_{args.num_parts}_{args.num_trainers_per_machine}_with_metis",
+            #part_method="random",
+            part_method="metis",
         )
         print(
             "Partitioning graph takes {:.3f} seconds".format(
