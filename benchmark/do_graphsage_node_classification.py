@@ -535,6 +535,12 @@ def run(args, device, data):
                         f"{host_name} {g.rank()}: Part {g.rank()} | Epoch {epoch:05d} | Step {step:05d} | Sample + Aggregation Time {sample_and_aggregate_times[-1]:.4f} sec | Movement Time {movement_time:.4f} sec | Train Time {train_time:.4f} sec",
                         flush=True,
                     )
+                    if (not args.heterogeneous) and args.use_wm:
+                        local_volume, remote_volume = get_communication_volume(False, train_nid, g.num_nodes())
+                        print(
+                            f"{host_name} {g.rank()}: Part {g.rank()}, Local Volume: {local_volume}, Remote Volume: {remote_volume}",
+                            flush=True,
+                        )
 
                 if step == sampled_step_beg - 1:
                     sampler.set_print_times()
@@ -620,9 +626,15 @@ def main(args):
     g = dgl.distributed.DistGraph(
         args.graph_name, part_config=args.part_config
     )
-    print(
-        f"{host_name} {g.rank()}: Rank of {host_name}: {g.rank()}", flush=True
-    )
+
+    if args.heterogeneous:
+        print(
+            f"{host_name} {g.rank()}: Rank of {host_name}: {g.rank()}.", flush=True
+        )
+    else:
+        print(
+            f"{host_name} {g.rank()}: Rank of {host_name}: {g.rank()}. num_nodes {g.num_nodes()}", flush=True
+        )
 
     if args.regenerate_node_features:
         print(
@@ -909,6 +921,7 @@ if __name__ == "__main__":
         os.environ["NVSHMEM_SYMMETRIC_SIZE"] = "15g"
 
     if args.use_wm:
+        from .DistDGL_WholeGraph.utils.comm_volume_modeling import get_communication_volume
         import torch.distributed as dist
         from .DistDGL_WholeGraph.utils.wholegraph_launch import (
             init_wholegraph,

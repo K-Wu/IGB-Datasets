@@ -615,6 +615,7 @@ def submit_jobs(args, udf_command, dry_run=False):
             master_addr=master_addr,
             master_port=master_port,
         )
+
         # Enable nsight system profiling by prepending nsys [args] to torch_dist_udf_command
         if args.enable_nsys:
             #  --cuda-memory-usage=true
@@ -623,9 +624,14 @@ def submit_jobs(args, udf_command, dry_run=False):
                 f"nsys command on {node_id} {host}: {torch_dist_udf_command}",
                 flush=True,
             )
+
         cmd = wrap_cmd_with_local_envvars(
             torch_dist_udf_command, client_env_vars
         )
+
+        if args.enable_nvcomm_traces:
+            cmd = wrap_cmd_with_extra_envvars(cmd, ["NCCL_DEBUG=TRACE", "NVSHMEM_DEBUG=TRACE"])
+
         cmd = (
             wrap_cmd_with_extra_envvars(cmd, args.extra_envs)
             if len(args.extra_envs) > 0
@@ -774,6 +780,11 @@ def main():
         "--nsys_output_filename",
         type=str,
         default="",
+    )
+    parser.add_argument(
+        "--enable-nvcomm-traces",
+        action="store_true",
+        help="Enable NCCL and NVSHMEM traces",
     )
     args, udf_command = parser.parse_known_args()
     assert len(udf_command) == 1, "Please provide user command line."
