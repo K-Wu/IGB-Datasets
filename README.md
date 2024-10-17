@@ -11,7 +11,7 @@ If the memory is not big enough, one thing you can try, if the int32 won't overf
 `DistGraphServer` instantiation in `initialize()` in /anaconda3/envs/<env_name>/lib/python<version>/site-packages/dgl/distributed/dist_context.py sets additionally `disable_shared_mem=True` to avoid bus error caused by insufficient shared memory.
 
 ## Official IGB Leadboard is now online!! 🎉
-Head over to the [leaderboard](https://github.com/IllinoisGraphBenchmark/IGB-Datasets/blob/leaderboard-creation/results/README.md#leaderboard-wip) and make your submission. 
+Head over to the [leaderboard](https://github.com/IllinoisGraphBenchmark/IGB-Datasets/blob/main/results/README.md) and make your submission. 
 
 ## Installation Guide
 
