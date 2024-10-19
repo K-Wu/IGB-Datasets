@@ -90,7 +90,7 @@ def execute_remote(
     workdir: str,
     rundir: str,
     username: Optional[str] = "",
-    cont_name: str = 'cont'
+    cont_name: Optional[str] = None
 ) -> Thread:
     """Execute command line on remote machine via ssh.
 
@@ -121,15 +121,23 @@ def execute_remote(
     if ip == '127.0.0.1':
         ssh_cmd = f"cd {wks}; bash -c '{cmd}'"
     else:
-        ssh_cmd = "srun --overlap -n 1 -N1 -w $(host {ip} | awk '{{print $5}}' | cut -d. -f1) --container-mounts={wks}:{wks},{rdir}:{rdir}{shm} \
-            --container-name={cont} --container-workdir={rdir} bash -c '{cmd}'".format(
-            ip=ip,
-            wks=wks,
-            rdir=rdir,
-            cont=cont_name,
-            cmd=cmd,
-            shm=shm
-        )
+        if cont_name:
+            ssh_cmd = "srun --overlap -n 1 -N1 -w $(host {ip} | awk '{{print $5}}' | cut -d. -f1) --container-mounts={wks}:{wks},{rdir}:{rdir}{shm} \
+                --container-name={cont} --container-workdir={rdir} bash -c '{cmd}'".format(
+                ip=ip,
+                wks=wks,
+                rdir=rdir,
+                cont=cont_name,
+                cmd=cmd,
+                shm=shm
+            )
+        else:
+            ssh_cmd = "srun --overlap -n 1 -N1 -w $(host {ip} | awk '{{print $5}}' | cut -d. -f1) \
+                 bash -c '{cmd}'".format(
+                ip=ip,
+                cmd=cmd,
+            )
+
     print(ssh_cmd)
     # thread func to run the job
     def run(ssh_cmd, state_q):
@@ -163,18 +171,25 @@ def execute_remote_all_procs(
     cmd: str,
     state_q: queue.Queue,
     num_local_procs: int,
-    cont_name: str = 'cont',
+    cont_name: Optional[str] = None,
 ) -> Thread:
 
+    if cont_name:
+        ssh_cmd = "srun -l --overlap --ntasks-per-node={num_local_procs} --container-mounts={wks}:{wks},{rdir}:{rdir} \
+            --container-workdir={rdir} --container-name={cont} bash -c '{cmd}'".format(
+            num_local_procs=num_local_procs,
+            wks=wks,
+            rdir=rdir,
+            cont=cont_name,
+            cmd=cmd,
+        )
+    else:
+        ssh_cmd = "srun -l --overlap --ntasks-per-node={num_local_procs} \
+             bash -c '{cmd}'".format(
+            num_local_procs=num_local_procs,
+            cmd=cmd,
+        )
 
-    ssh_cmd = "srun -l --overlap --ntasks-per-node={num_local_procs} --container-mounts={wks}:{wks},{rdir}:{rdir} \
-        --container-workdir={rdir} --container-name={cont} bash -c '{cmd}'".format(
-        num_local_procs=num_local_procs,
-        wks=wks,
-        rdir=rdir,
-        cont=cont_name,
-        cmd=cmd,
-    )
     print(ssh_cmd)
     # thread func to run the job
     def run(ssh_cmd, state_q):
@@ -266,7 +281,8 @@ def construct_torch_dist_launcher_cmd(
         cmd_str.
     """
     torch_cmd_template = (
-        "torchrun "
+        # "torchrun "
+        "python -m torch.distributed.run "
         "--nproc_per_node={nproc_per_node} "
         "--nnodes={nnodes} "
         "--node_rank={node_rank} "
@@ -889,6 +905,12 @@ def main():
         type=str,
         help="The file (in workspace) of IP configuration for server processes",
     )
+    # This is not used. Just to keep the same interface as the slurm_launcher.py in the parent directory.
+    parser.add_argument(
+        "--nodename_config",
+        type=str,
+        help="The file (in workspace) of Node name configuration for server processes",
+    )
     parser.add_argument(
         "--num_server_threads",
         type=int,
@@ -927,10 +949,15 @@ def main():
     parser.add_argument(
         "--container_name",
         type=str,
-        default="cont",
         help="Used to launch the script within an existing container with a specfic name",
     )
     args, udf_command = parser.parse_known_args()
+    if args.nodename_config is not None:
+        print(
+            "Warning: The nodename_config is not used in this version. Please remove it."
+        )
+
+
     if args.rundir is None:
         args.rundir = args.workspace
     if args.keep_alive:
