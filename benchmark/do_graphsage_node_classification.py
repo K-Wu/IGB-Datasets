@@ -15,6 +15,7 @@ import tqdm
 from dgl.nn.pytorch import GATConv, HeteroGraphConv
 from dgl import apply_each
 import os
+from dgl.distributed import role
 
 
 class DistRGAT(nn.Module):
@@ -535,12 +536,16 @@ def run(args, device, data):
                         f"{host_name} {g.rank()}: Part {g.rank()} | Epoch {epoch:05d} | Step {step:05d} | Sample + Aggregation Time {sample_and_aggregate_times[-1]:.4f} sec | Movement Time {movement_time:.4f} sec | Train Time {train_time:.4f} sec",
                         flush=True,
                     )
+                    print(f"{host_name} {g.rank()} {role.get_num_trainers()}")
                     if (not args.heterogeneous) and args.use_wm:
                         local_volume, remote_volume = get_communication_volume(False, train_nid, g.num_nodes())
                         print(
                             f"{host_name} {g.rank()}: Part {g.rank()}, Local Volume: {local_volume}, Remote Volume: {remote_volume}",
                             flush=True,
                         )
+                        if step == sampled_step_beg:
+                            import pylibwholegraph.torch as wgth
+                            print(f"{host_name} {g.rank()}: Wholegraph rank {wgth.get_rank()} Wholegraph world size {wgth.get_world_size()}")
 
                 if step == sampled_step_beg - 1:
                     sampler.set_print_times()
@@ -888,6 +893,11 @@ if __name__ == "__main__":
         help="Regenerate node features.",
     )
 
+    parser.add_argument(
+        "--wg-num-nodes",
+        type=int,
+        help="The number of nodes (for wholegraph initialization)"
+    )
     parser.add_argument(
         "--wg-launch-agent",
         type=str,

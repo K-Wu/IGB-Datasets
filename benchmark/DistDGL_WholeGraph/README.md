@@ -15,7 +15,11 @@ docker cp $img_id:/workspace/examples/wholegraph-examples/DistDGL-WholeGraph ./D
 docker rm -v $img_id
 ```
 
-Extraction command reference: https://stackoverflow.com/a/73524931/5555077
+[Extraction command reference](https://stackoverflow.com/a/73524931/5555077)
+
+## Troubleshooting mpi4py
+mpi4py should be installed with the MPI library built with slurm support. Check [this instruction](https://researchcomputing.princeton.edu/support/knowledge-base/mpi4py) to see how to install/uninstall mpi4py as such.
+
 
 ## Distributed GNN Training with DistDGL and WholeGraph (DistDGL + WholeGraph)
 

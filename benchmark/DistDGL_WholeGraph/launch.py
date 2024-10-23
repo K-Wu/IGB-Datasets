@@ -132,6 +132,7 @@ def execute_remote(
                 shm=shm
             )
         else:
+            # --mpi=openmpi 
             ssh_cmd = "srun --overlap -n 1 -N1 -w $(host {ip} | awk '{{print $5}}' | cut -d. -f1) \
                  bash -c '{cmd}'".format(
                 ip=ip,
@@ -175,6 +176,7 @@ def execute_remote_all_procs(
 ) -> Thread:
 
     if cont_name:
+        # --mpi=openmpi 
         ssh_cmd = "srun -l --overlap --ntasks-per-node={num_local_procs} --container-mounts={wks}:{wks},{rdir}:{rdir} \
             --container-workdir={rdir} --container-name={cont} bash -c '{cmd}'".format(
             num_local_procs=num_local_procs,
@@ -184,6 +186,7 @@ def execute_remote_all_procs(
             cmd=cmd,
         )
     else:
+        # --mpi=openmpi 
         ssh_cmd = "srun -l --overlap --ntasks-per-node={num_local_procs} \
              bash -c '{cmd}'".format(
             num_local_procs=num_local_procs,

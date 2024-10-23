@@ -7,6 +7,7 @@ import pylibwholegraph.torch as wgth
 
 import pylibwholegraph.binding.wholememory_binding as wmb
 import pylibwholegraph.torch.wholememory_ops as wm_ops
+from dgl.distributed import role
 
 class wholegraph_config:
     """Add/initialize default options required for distributed launch incorprating with wholegraph
@@ -18,6 +19,8 @@ class wholegraph_config:
 
         self.launch_env_name_world_rank = "RANK"
         self.launch_env_name_world_size = "WORLD_SIZE"
+        #self.launch_env_name_world_rank = "LOCAL_RANK"
+        #self.launch_env_name_world_size = "LOCAL_WORLD_SIZE"
         self.launch_env_name_master_addr = "MASTER_ADDR"
         self.launch_env_name_master_port = "MASTER_PORT"
         self.launch_env_name_local_size = "LOCAL_WORLD_SIZE"
@@ -36,10 +39,15 @@ class wholegraph_config:
 
 # initialize wholegraph and return its global communicator
 def init_wholegraph(args):
+    os.environ["WORLD_SIZE"] = str(role.get_num_trainers())
+    os.environ["RANK"] = str(role.get_trainer_rank())
     config = wholegraph_config(launch_agent=args.wg_launch_agent, local_size=args.ngpu_per_node)
     wgth.distributed_launch(config, lambda: None)
+    print("Multiprocessing Configuration ",os.environ.get("WORLD_SIZE"), os.environ.get("RANK"), os.environ.get("LOCAL_RANK"), os.environ.get("LOCAL_WORLD_SIZE"), flush=True)
     wmb.init(0)
     wgth.comm.set_world_info(wgth.get_rank(), wgth.get_world_size(), wgth.get_local_rank(), wgth.get_local_size(),)
+    #wgth.comm.set_world_info(role.get_trainer_rank(), role.get_num_trainers(), role.get_trainer_rank() % args.wg_num_nodes, role.get_num_trainers() // args.wg_num_nodes,)
+
     # print("Wholegraph initialized", wgth.get_rank(), wgth.get_world_size(), wgth.get_local_rank(), wgth.get_local_size(), flush=True)
     if args.wg_launch_agent == 'pytorch':
         assert args.wg_comm_backend=='nccl', "nvshmem does not support launching through pytorch. Please use mpi instead."
