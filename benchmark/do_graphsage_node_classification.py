@@ -18,6 +18,8 @@ import os
 from dgl.distributed import role
 
 
+
+
 class DistRGAT(nn.Module):
     """Adapted from class GAT in /IGB-datasets/igb/models.py. Arguments of __init__ are renamed to unify with the DistSAGE class."""
 
@@ -410,6 +412,11 @@ def run(args, device, data):
     loss_fcn = loss_fcn.to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
+    if args.use_gb:
+        assert not args.heterogeneous, "use_gb does not support heterogeneous graph yet"
+        fallback_feature = TorchDistTensorFeature(g.ndata["features"])
+        feature_cache = gb.GPUCachedFeature(fallback_feature, args.gb_cache_size)
+
     # Training loop.
     iter_tput = []
     epoch = 0
@@ -483,9 +490,15 @@ def run(args, device, data):
                 else:
                     # TODO: add wholegraph support according to L144 in benchmark/DistDGL_WholeGraph/node_classification.py
                     if args.use_wm:
+                        if args.use_gb:
+                            # TODO: implement graphbolt cache here
+                            raise NotImplementedError("use_gb does not support wholegraph memory yet")
                         batch_inputs = wm_features.gather(input_nodes.cuda())
                     else:
-                        batch_inputs = g.ndata["features"][input_nodes]
+                        if args.use_gb:
+                            batch_inputs = feature_cache.read(input_nodes.cuda())
+                        else:
+                            batch_inputs = g.ndata["features"][input_nodes]
                     num_seeds += len(blocks[-1].dstdata[dgl.NID])
                     num_inputs += len(blocks[0].srcdata[dgl.NID])
                     batch_labels = g.ndata["labels"][seeds].long()
@@ -538,7 +551,7 @@ def run(args, device, data):
                     )
                     print(f"{host_name} {g.rank()} {role.get_num_trainers()}")
                     if (not args.heterogeneous) and args.use_wm:
-                        local_volume, remote_volume = get_communication_volume(False, train_nid, g.num_nodes())
+                        local_volume, remote_volume = get_communication_volume(False, input_nodes, g.num_nodes())
                         print(
                             f"{host_name} {g.rank()}: Part {g.rank()}, Local Volume: {local_volume}, Remote Volume: {remote_volume}",
                             flush=True,
@@ -547,10 +560,10 @@ def run(args, device, data):
                             import pylibwholegraph.torch as wgth
                             print(f"{host_name} {g.rank()}: Wholegraph rank {wgth.get_rank()} Wholegraph world size {wgth.get_world_size()}")
 
-                if step == sampled_step_beg - 1:
+                if step == sampled_step_beg - 1 and dgl.__version__.split(".")[0] == "1":
                     sampler.set_print_times()
                     dataloader.set_print_times(g.rank())
-                if step == sampled_step_end:
+                if step == sampled_step_end and dgl.__version__.split(".")[0] == "1":
                     # Exit the loop
                     sampler.reset_print_times()
                     dataloader.reset_print_times()
@@ -924,6 +937,18 @@ if __name__ == "__main__":
         default="cpu",
         help="feature store at [cpu|cuda]",
     )
+    parser.add_argument(
+        "--use-gb",
+        action="store_true",
+        help="use graphbolt's GPU features cache",
+    )
+    # OGB-papers100M feature size is 128. 4GB cache can hold 8M features.
+    # igb240m feature size is 1024. 4GB cache can hold 1M features.
+    parser.add_argument(
+        "--gb-cache-size",
+        type=int,
+        help="number of features to cache in graphbolt",
+    )
 
     args = parser.parse_args()
 
@@ -943,6 +968,10 @@ if __name__ == "__main__":
         from .DistDGL_WholeGraph.utils.load_feature import (
             load_wholegraph_distribute_feature_tensor,
         )
+    
+    if args.use_gb:
+        from dgl import graphbolt as gb
+        from .graphbolt_wholegraph_features import TorchDistTensorFeature
 
     print(f"Arguments: {args}", flush=True)
     main(args)
