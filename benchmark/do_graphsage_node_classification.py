@@ -415,7 +415,7 @@ def run(args, device, data):
     if args.use_gb:
         assert not args.heterogeneous, "use_gb does not support heterogeneous graph yet"
         fallback_feature = TorchDistTensorFeature(g.ndata["features"])
-        feature_cache = gb.GPUCachedFeature(fallback_feature, args.gb_cache_size)
+        feature_cache = MyGPUCachedFeature(fallback_feature, args.gb_cache_size)
 
     # Training loop.
     iter_tput = []
@@ -438,11 +438,12 @@ def run(args, device, data):
         sampled_times_sampling = []
         sampled_times_movement = []
         sampled_times_training = []
-        sampled_step_beg = 1  # 500
-        assert (
-            sampled_step_beg >= 1
-        ), "sampled_step_beg must be at least 1 because we need to execute dataloader.set_print_times(g.rank()) in the previous step"
-        sampled_step_end = 101  # 600
+        sampled_step_beg = 0  # 500
+        if dgl.__version__.split(".")[0] == "1":
+            assert (
+                sampled_step_beg >= 1
+            ), "sampled_step_beg must be at least 1 because we need to execute dataloader.set_print_times(g.rank()) in the previous step"
+        sampled_step_end = 100  # 600
         with model.join():
             for step, (input_nodes, seeds, blocks) in enumerate(dataloader):
                 th.distributed.barrier()
@@ -496,7 +497,7 @@ def run(args, device, data):
                         batch_inputs = wm_features.gather(input_nodes.cuda())
                     else:
                         if args.use_gb:
-                            batch_inputs = feature_cache.read(input_nodes.cuda())
+                            batch_inputs = feature_cache.read(input_nodes)
                         else:
                             batch_inputs = g.ndata["features"][input_nodes]
                     num_seeds += len(blocks[-1].dstdata[dgl.NID])
@@ -559,7 +560,9 @@ def run(args, device, data):
                         if step == sampled_step_beg:
                             import pylibwholegraph.torch as wgth
                             print(f"{host_name} {g.rank()}: Wholegraph rank {wgth.get_rank()} Wholegraph world size {wgth.get_world_size()}")
-
+                else:
+                    break
+                
                 if step == sampled_step_beg - 1 and dgl.__version__.split(".")[0] == "1":
                     sampler.set_print_times()
                     dataloader.set_print_times(g.rank())
@@ -972,6 +975,7 @@ if __name__ == "__main__":
     if args.use_gb:
         from dgl import graphbolt as gb
         from .graphbolt_wholegraph_features import TorchDistTensorFeature
+        from .graphbolt_my_gpu_cache import MyGPUCachedFeature
 
     print(f"Arguments: {args}", flush=True)
     main(args)

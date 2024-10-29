@@ -1,16 +1,16 @@
-"""General GPU cache to work with DGL DistTensor and Wholegraph Memory.
+"""GPU cache to work with DGL DistTensor and Wholegraph Memory. The read function is modified so that id as a CPU tensor can be accepted.
 Adapted from /dgl/python/dgl/graphbolt/impl/gpu_cached_feature.py of DGL 2.1.0
 GPU cached feature for GraphBolt."""
 import torch
 
-from ..feature_store import Feature
+from dgl.graphbolt.feature_store import Feature
 
-from .gpu_cache import GPUCache
+from dgl.graphbolt.impl.gpu_cache import GPUCache
 
-__all__ = ["GPUCachedFeature"]
+__all__ = ["MyGPUCachedFeature"]
 
 
-class GPUCachedFeature(Feature):
+class MyGPUCachedFeature(Feature):
     r"""GPU cached feature wrapping a fallback feature.
 
     Places the GPU cache to torch.cuda.current_device().
@@ -75,7 +75,11 @@ class GPUCachedFeature(Feature):
         """
         if ids is None:
             return self._fallback_feature.read()
-        values, missing_index, missing_keys = self._feature.query(ids)
+        if ids.is_cpu:
+            ids_cuda = ids.to("cuda")
+        else:
+            ids_cuda = ids
+        values, missing_index, missing_keys = self._feature.query(ids_cuda)
         missing_values = self._fallback_feature.read(missing_keys).to("cuda")
         values[missing_index] = missing_values
         self._feature.replace(missing_keys, missing_values)
