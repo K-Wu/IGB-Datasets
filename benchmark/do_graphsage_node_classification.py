@@ -367,10 +367,10 @@ def run(args, device, data):
             flush=True,
         )
         assert not args.heterogeneous
-        assert args.batch_size == 2048
-        assert args.fan_out == "5,2,2,2" or args.fan_out == "10,5,5"
-        assert args.n_layers == 4 or args.n_layers == 3
-        assert args.num_hidden == 512
+        # assert args.batch_size == 2048
+        # assert args.fan_out == "5,2,2,2" or args.fan_out == "10,5,5"
+        # assert args.n_layers == 4 or args.n_layers == 3
+        # assert args.num_hidden == 512
         model = DistGAT(
             in_feats,
             n_hidden=args.num_hidden,

@@ -45,7 +45,7 @@ class MyGPUCachedFeature(Feature):
     """
 
     def __init__(self, fallback_feature: Feature, cache_size: int):
-        super(GPUCachedFeature, self).__init__()
+        super(MyGPUCachedFeature, self).__init__()
         assert isinstance(fallback_feature, Feature), (
             f"The fallback_feature must be an instance of Feature, but got "
             f"{type(fallback_feature)}."
