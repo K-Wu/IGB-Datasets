@@ -362,10 +362,10 @@ def run(args, device, data):
             args.dropout,
         )
     elif args.model == "DistGAT":
-        print(
-            f"{host_name} {g.rank()}: Using DistGAT model default parameters batch_size(2048) fanout (5,2,2,2) n_layers (4), hidden_dim 512, n_heads (4)",
-            flush=True,
-        )
+        # print(
+        #     f"{host_name} {g.rank()}: Using DistGAT model default parameters batch_size(2048) fanout (5,2,2,2) n_layers (4), hidden_dim 512, n_heads (4)",
+        #     flush=True,
+        # )
         assert not args.heterogeneous
         # assert args.batch_size == 2048
         # assert args.fan_out == "5,2,2,2" or args.fan_out == "10,5,5"
