@@ -139,18 +139,19 @@ class WholeGraphMemoryFeature(Feature):
     r"""Adapted from TorchBasedFeature. A wrapper of pytorch based feature.
     """
 
-    def __init__(self, dgl_feature: DistTensor, metadata: Dict = None):
+    def __init__(self, wm_feature: "wgth.WholeMemoryEmbedding", metadata: Dict = None):
         super().__init__()
-        assert isinstance(dgl_feature, DistTensor), (
-            f"dgl_feature in TorchBasedFeature must be torch.Tensor, "
-            f"but got {type(dgl_feature)}."
+        import pylibwholegraph.torch as wgth
+        assert isinstance(wm_feature, wgth.WholeMemoryEmbedding), (
+            f"wm_feature in WholeGraphMemoryFeature must be torch.Tensor, "
+            f"but got {type(wm_feature)}."
         )
         # assert dgl_feature.dim() > 1, (
         #     f"dimension of dgl_feature in TorchBasedFeature must be greater "
         #     f"than 1, but got {dgl_feature.dim()} dimension."
         # )
         # Make sure the tensor is contiguous.
-        self._tensor = dgl_feature# .contiguous()
+        self._tensor = wm_feature# .contiguous()
         self._metadata = metadata
 
     def __del__(self):
@@ -180,7 +181,7 @@ class WholeGraphMemoryFeature(Feature):
         """
         if ids is None:
             return self._tensor
-        return self._tensor[ids.cpu()]
+        return self._tensor.gather(ids.cuda())
 
     def read_async(self, ids: torch.Tensor):
         raise NotImplementedError

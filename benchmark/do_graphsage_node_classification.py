@@ -414,7 +414,10 @@ def run(args, device, data):
 
     if args.use_gb:
         assert not args.heterogeneous, "use_gb does not support heterogeneous graph yet"
-        fallback_feature = TorchDistTensorFeature(g.ndata["features"])
+        if args.use_wm:
+            fallback_feature = WholeGraphMemoryFeature(wm_features)
+        else:
+            fallback_feature = TorchDistTensorFeature(g.ndata["features"])
         feature_cache = MyGPUCachedFeature(fallback_feature, args.gb_cache_size)
 
     # Training loop.
@@ -492,9 +495,9 @@ def run(args, device, data):
                     # TODO: add wholegraph support according to L144 in benchmark/DistDGL_WholeGraph/node_classification.py
                     if args.use_wm:
                         if args.use_gb:
-                            # TODO: implement graphbolt cache here
-                            raise NotImplementedError("use_gb does not support wholegraph memory yet")
-                        batch_inputs = wm_features.gather(input_nodes.cuda())
+                            batch_inputs = feature_cache.read(input_nodes)
+                        else:
+                            batch_inputs = wm_features.gather(input_nodes.cuda())
                     else:
                         if args.use_gb:
                             batch_inputs = feature_cache.read(input_nodes)
@@ -974,7 +977,7 @@ if __name__ == "__main__":
     
     if args.use_gb:
         from dgl import graphbolt as gb
-        from .graphbolt_wholegraph_features import TorchDistTensorFeature
+        from .graphbolt_wholegraph_features import TorchDistTensorFeature, WholeGraphMemoryFeature
         from .graphbolt_my_gpu_cache import MyGPUCachedFeature
 
     print(f"Arguments: {args}", flush=True)
